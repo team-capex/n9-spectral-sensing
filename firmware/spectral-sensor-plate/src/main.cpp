@@ -39,11 +39,11 @@ void setHeaterPower(int heater, int power);
 void setup() {
   Serial.begin(115200);
 
-  ledcSetup(1, 10000, 10);
-  ledcAttachPin(HEATER1, 1);
+  ledcSetup(0, 1000, 10);
+  ledcAttachPin(HEATER1, 0);
 
-  ledcSetup(2, 10000, 10);
-  ledcAttachPin(HEATER2, 2);
+  ledcSetup(1, 1000, 10);
+  ledcAttachPin(HEATER2, 1);
 
   if (!sensors.begin()) {
     Serial.println("Failed to init muxes/I2C.");
@@ -132,5 +132,5 @@ void setHeaterPower(int heater, int power) {
     return;
   }
 
-  ledcWrite(heater, map(power, 0, 100, 0, 1023));
+  ledcWrite(heater-1, map(power, 0, 100, 0, 1023));
 }
