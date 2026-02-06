@@ -85,6 +85,18 @@ class SpectralSensor:
 
             logging.info(data)
 
+    def extract_readings(self) -> str:
+        while True:
+            data = self.get_data()
+
+            if data.startswith("ESP-ROM:"):
+                continue
+
+            if "[DATA]" in data:
+                return data
+            if "Unknown command" in data:
+                raise RuntimeError("Controller board failed to recognise command: " + data)
+
     @skip_if_sim()
     def close_ser(self) -> None:
         logging.info("Closing serial connection to spectral sensor board.")
@@ -103,7 +115,7 @@ class SpectralSensor:
     @skip_if_sim(default_return = "F1=0,F2=0,F3=0,F4=0,F5=0,F6=0,F7=0,F8=0,CLR=0,NIR=0")
     def read_sensor(self, no: int) -> str:
         self.ser.write(f"readSensor({no})".encode())
-        return self.get_data()
+        return self.extract_readings()
     
     @skip_if_sim()
     def shutdown_sensors(self) -> None:
