@@ -28,6 +28,8 @@ static uint8_t AS_ATIME = 29;
 static uint16_t AS_ASTEP = 599;
 static const uint8_t LED_CURRENT = 5; //mA (don't change, reasonable max for LED life)
 
+static bool LED_DURING_MEASUREMENT = false;
+
 // LED flash behavior (visual scan feedback)
 // "Low current" here means: LED on briefly; Adafruit lib doesn't provide
 // direct current setting for arbitrary boards, but this is typically safe.
@@ -78,6 +80,7 @@ public:
 
   // Lets user change gain, exposure time etc.
   void setSensorSettings(uint8_t gain, uint8_t atime, uint8_t astep);
+  void setLedMode(bool mode = false);
 
 private:
   // Single Adafruit object reused for all sensors (address always 0x39).

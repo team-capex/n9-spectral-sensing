@@ -183,8 +183,12 @@ bool AS7341Array::readSpectral(uint8_t sensorIndex, AS7341SpectralData &out) {
   }
 
   // 3) Flash LED briefly BEFORE measurement, then keep it OFF during measurement
-  flashLedBeforeMeasurement();
-  ensureLedOff();
+  if (LED_DURING_MEASUREMENT) {
+    _as7341.enableLED(true);
+  }
+  else {
+    flashLedBeforeMeasurement();
+  }
 
   // 4) Read all 10 channels: F1..F8 + CLEAR + NIR
   // Adafruit library provides readAllChannels() which fills an internal buffer,
@@ -193,6 +197,9 @@ bool AS7341Array::readSpectral(uint8_t sensorIndex, AS7341SpectralData &out) {
     closeAll();
     return false;
   }
+
+  // Double check LED is off before disconnect
+  ensureLedOff();
 
   out.F1    = _as7341.getChannel(AS7341_CHANNEL_415nm_F1);
   out.F2    = _as7341.getChannel(AS7341_CHANNEL_445nm_F2);
@@ -274,4 +281,8 @@ void AS7341Array::setSensorSettings(uint8_t gain, uint8_t atime, uint8_t astep) 
     AS_ASTEP = astep;
   }
 
+}
+
+void AS7341Array::setLedMode(bool mode) {
+  LED_DURING_MEASUREMENT = mode;
 }

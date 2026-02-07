@@ -122,6 +122,16 @@ void loop() {
       sensors.setSensorSettings(req_gain, req_atime, req_astep);
       Serial.println("#");
     }
+    else if (action == "changeLedMode") {
+      req_index = Serial.readStringUntil(')').toInt();
+      if (req_index == 0) {
+        sensors.setLedMode(false);
+      }
+      else if (req_index == 1) {
+        sensors.setLedMode(true);
+      }
+      Serial.println("#");
+    }
     else {
       Serial.println("UNKNOWN COMMAND");
     }

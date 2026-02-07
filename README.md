@@ -29,6 +29,63 @@ source .venv/bin/activate
 
 Note: Replace *bin* with *Scripts* if using windows.
 
+## Introduction to AS3741 Spectral Sensor #####
+
+| Channel | Approx. Wavelength |
+|------|------|
+| F1 - Violet | ~405 nm |
+| F2 - Indigo | ~425 nm |
+| F3 - Blue | ~450 nm |
+| F4 - Cyan | ~475 nm |
+| F5 - Green | ~515 nm |
+| F6 - Yellow | ~555 nm |
+| F7 - Orange | ~590 nm |
+| F8 - Red | ~630–680 nm |
+| CLR | All visible |
+| NIR | ~850–900 nm |
+
+### Raw photodiode counts (ADC output after integration).
+They are not color-corrected or normalized and are extremely sensitive to:
+- Illumination spectrum
+- LED aging
+- Distance / angle
+- Surface texture
+
+### CLR = broadband photodiode with no color filter
+It sees almost the entire visible spectrum (and a bit beyond).
+Think of it as: “Total visible light intensity” or a reference / normalization channel
+
+Why it exists: 
+- Normalize spectral channels: Fn / CLR
+- Detect illumination changes.
+- Improve stability across time.
+- If your light source dims by 10%, all F channels drop, but CLR drops too → ratios stay meaningful.
+
+### NIR = Near-Infrared photodiode (~850–900 nm)
+Why this matters:
+- Many white LEDs leak IR.
+- Organic materials often change IR reflectance before visible color shifts.
+- Ambient sunlight has a lot of IR.
+
+Use cases:
+- Detect ambient contamination (sunlight vs LED).
+- Correct visible channels (if NIR spikes, your visible data is probably compromised).
+- Feature extraction (especially for fermentation / bio / chemical systems).
+
+If you’re doing controlled illumination, NIR should be:
+- Stable
+- Low
+- Boring
+
+### Why there are two CLR and two NIR readings
+The AS7341 has two ADC paths / measurement groups, internally multiplexed.
+
+They are not different sensors, just:
+- Different integration cycles
+- Different gain paths
+
+ In most applications, just pick one CLR and one NIR and be consistent.
+
 ## Other Requirements
 
 - Platformio vscode extension to flash firmware to PCBs

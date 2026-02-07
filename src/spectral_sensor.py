@@ -1,5 +1,6 @@
 import logging
 import time
+import os
 import serial
 
 logging.basicConfig(level = logging.INFO)
@@ -145,6 +146,12 @@ class SpectralSensor:
     @skip_if_sim()
     def set_sensor_settings(self, gain: int, atime: int, astep: int) -> None:
         self.ser.write(f"changeSettings({gain},{atime},{astep})".encode())
+        self.check_response()
+
+    @skip_if_sim()
+    def set_leds_on_during_measurements(self, mode: bool = False) -> None:
+
+        self.ser.write(f"changeLedMode({1 if mode else 0})".encode())
         self.check_response()
 
 
