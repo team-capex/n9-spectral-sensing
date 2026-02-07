@@ -27,10 +27,8 @@ AS7341Array sensors;
 // Sensor#: 16, 14, 12, 10, 9, 11, 13, 15
 
 String action;
-int req_index;
-float req_power;
-float req_voltage;
-float req_current;
+int req_index, req_gain, req_atime, req_astep;
+float req_power, req_voltage, req_current;
 
 // ------ Prototypes ------
 void setHeaterPower(int heater, int power);
@@ -114,6 +112,14 @@ void loop() {
       (void)Serial.readStringUntil(')');
       
       sensors.closeAll();
+      Serial.println("#");
+    }
+    else if (action == "changeSettings") {
+      req_gain = Serial.readStringUntil(',').toInt();
+      req_atime = Serial.readStringUntil(',').toInt();
+      req_astep = Serial.readStringUntil(')').toInt();
+      
+      sensors.setSensorSettings(req_gain, req_atime, req_astep);
       Serial.println("#");
     }
     else {

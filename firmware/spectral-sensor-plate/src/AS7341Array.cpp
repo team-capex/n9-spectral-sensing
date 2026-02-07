@@ -34,6 +34,10 @@ bool AS7341Array::begin() {
 
   // Start in safe state: all channels off
   closeAll();
+
+  // Show board is active
+  loopLEDs();
+
   return true;
 }
 
@@ -145,6 +149,7 @@ bool AS7341Array::initAS7341OnActiveChannel() {
   _as7341.setATIME(AS_ATIME);
   _as7341.setASTEP(AS_ASTEP);
   _as7341.setGain(AS_GAIN);
+  _as7341.setLEDCurrent(LED_CURRENT);
 
   // Ensure LED off in idle
   ensureLedOff();
@@ -205,4 +210,68 @@ bool AS7341Array::readSpectral(uint8_t sensorIndex, AS7341SpectralData &out) {
   closeAll();
 
   return true;
+}
+
+void AS7341Array::loopLEDs() {
+  for (int i=1; i<=16; i++) {
+    // 1) Select the requested sensor (opens only one channel total)
+    if (!selectSensor(i)) {
+      return;
+    }
+
+    // 2) Initialize the AS7341 on this channel
+    if (!initAS7341OnActiveChannel()) {
+      closeAll();
+      return;
+    }
+
+    // 3) Turn LED ON
+    _as7341.enableLED(true);
+    delay(LED_FLASH_MS);
+  }
+
+  for (int i=1; i<=16; i++) {
+    // 1) Select the requested sensor (opens only one channel total)
+    if (!selectSensor(i)) {
+      return;
+    }
+
+    // 2) Initialize the AS7341 on this channel
+    if (!initAS7341OnActiveChannel()) {
+      closeAll();
+      return;
+    }
+
+    // 3) Turn LED OFF
+    _as7341.enableLED(false);
+    delay(LED_FLASH_MS);
+  }
+
+  closeAll();
+}
+
+void AS7341Array::setSensorSettings(uint8_t gain, uint8_t atime, uint8_t astep) {
+  switch (gain) {
+    case 1:
+      AS_GAIN = AS7341_GAIN_1X;
+      break;
+    case 2:
+      AS_GAIN = AS7341_GAIN_2X;
+      break;
+    case 4:
+      AS_GAIN = AS7341_GAIN_4X;
+      break;
+    case 8:
+      AS_GAIN = AS7341_GAIN_8X;
+      break;
+  }
+
+  if (atime > 1 && atime < 100) {
+    AS_ATIME = atime;
+  }
+
+  if (astep > 1 && astep < 1000) {
+    AS_ASTEP = astep;
+  }
+
 }

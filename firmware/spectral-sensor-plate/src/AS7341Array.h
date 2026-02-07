@@ -23,9 +23,10 @@ static const uint32_t I2C_FREQ = 400000;
 // ============================================================
 // Hard-coded AS7341 settings (as requested)
 // ============================================================
-static const as7341_gain_t AS_GAIN = AS7341_GAIN_1X;
-static const uint8_t AS_ATIME = 29;
-static const uint16_t AS_ASTEP = 599;
+static as7341_gain_t AS_GAIN = AS7341_GAIN_1X;
+static uint8_t AS_ATIME = 29;
+static uint16_t AS_ASTEP = 599;
+static const uint8_t LED_CURRENT = 5; //mA (don't change, reasonable max for LED life)
 
 // LED flash behavior (visual scan feedback)
 // "Low current" here means: LED on briefly; Adafruit lib doesn't provide
@@ -69,8 +70,14 @@ public:
   // Returns raw band intensities (no normalization).
   bool readSpectral(uint8_t sensorIndex, AS7341SpectralData &out);
 
+  // To show ON when power connected.
+  void loopLEDs();
+
   // Turns OFF all channels on both muxes (safe idle state).
   void closeAll();
+
+  // Lets user change gain, exposure time etc.
+  void setSensorSettings(uint8_t gain, uint8_t atime, uint8_t astep);
 
 private:
   // Single Adafruit object reused for all sensors (address always 0x39).

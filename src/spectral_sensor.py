@@ -142,6 +142,11 @@ class SpectralSensor:
         self.ser.write(f"setCurrent({ma})".encode())
         self.check_response()
 
+    @skip_if_sim()
+    def set_sensor_settings(self, gain: int, atime: int, astep: int) -> None:
+        self.ser.write(f"changeSettings({gain},{atime},{astep})".encode())
+        self.check_response()
+
 
 
        
