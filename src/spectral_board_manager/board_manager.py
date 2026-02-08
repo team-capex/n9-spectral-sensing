@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
+os.environ["MPLBACKEND"] = "Agg" # Must happen before any matplotlib imports (allows plotting with multiple threads)
+
 from dataclasses import dataclass
 from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import os
 import threading
 
 import yaml

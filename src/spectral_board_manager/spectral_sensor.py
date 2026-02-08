@@ -43,10 +43,6 @@ class SpectralSensor:
 
             if self.ser.isOpen() is False:
                 self.ser.open()
-            else:
-                self.ser.close()
-                time.sleep(0.05)
-                self.ser.open()
 
             # Give time for controller to wake up
             time.sleep(2)
@@ -68,7 +64,7 @@ class SpectralSensor:
         if self.ser.in_waiting == 0:
              raise RuntimeError("Timed out waiting for response.")
         else:
-            return self.ser.readline().decode().rstrip().replace("\x00", "")
+            return self.ser.readline().decode("utf-8").rstrip().replace("\x00", "")
         
     @skip_if_sim()
     def check_response(self) -> None:
@@ -101,7 +97,7 @@ class SpectralSensor:
         if self.ser.isOpen():
             self.ser.close()
 
-    @skip_if_sim(default_return = "F1=0,F2=0,F3=0,F4=0,F5=0,F6=0,F7=0,F8=0,CLR=0,NIR=0")
+    @skip_if_sim(default_return = "F1=0,F2=0,F3=0,F4=0,F5=0,F6=0,F7=0,F8=0,CLR=1,NIR=0")
     def read_sensor(self, no: int) -> str:
         self.ser.write(f"readSensor({no})".encode())
         return self.extract_readings()

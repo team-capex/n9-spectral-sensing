@@ -14,6 +14,7 @@ static const uint8_t MUX2_CH_TO_SENSOR[8] = {16, 14, 12, 10, 9, 11, 13, 15};
 
 bool AS7341Array::begin() {
   // Setup I2C on specified pins
+  Serial.printf("[I2C] Wire.begin called at %lu ms\n", millis());
   Wire.begin((int)SDA_PIN, (int)SCL_PIN);
   Wire.setClock(I2C_FREQ);
 
@@ -190,6 +191,7 @@ bool AS7341Array::readSpectral(uint8_t sensorIndex, AS7341SpectralData &out) {
     flashLedBeforeMeasurement();
   }
 
+  delay(5);
   // 4) Read all 10 channels: F1..F8 + CLEAR + NIR
   // Adafruit library provides readAllChannels() which fills an internal buffer,
   // then you fetch each channel value via getChannel().
@@ -200,6 +202,7 @@ bool AS7341Array::readSpectral(uint8_t sensorIndex, AS7341SpectralData &out) {
 
   // Double check LED is off before disconnect
   ensureLedOff();
+  delay(5);
 
   out.F1    = _as7341.getChannel(AS7341_CHANNEL_415nm_F1);
   out.F2    = _as7341.getChannel(AS7341_CHANNEL_445nm_F2);
@@ -209,8 +212,9 @@ bool AS7341Array::readSpectral(uint8_t sensorIndex, AS7341SpectralData &out) {
   out.F6    = _as7341.getChannel(AS7341_CHANNEL_590nm_F6);
   out.F7    = _as7341.getChannel(AS7341_CHANNEL_630nm_F7);
   out.F8    = _as7341.getChannel(AS7341_CHANNEL_680nm_F8);
-  out.CLEAR = _as7341.getChannel(AS7341_CHANNEL_CLEAR);
-  out.NIR   = _as7341.getChannel(AS7341_CHANNEL_NIR);
+
+  out.CLEAR = floor(0.5 * (_as7341.getChannel(AS7341_CHANNEL_CLEAR_0) + _as7341.getChannel(AS7341_CHANNEL_CLEAR)));
+  out.NIR = floor(0.5 * (_as7341.getChannel(AS7341_CHANNEL_NIR_0) + _as7341.getChannel(AS7341_CHANNEL_NIR)));
 
   // 5) Leave system in safe state (optional but recommended)
   // If you want to keep the channel open for repeated reads, remove this.

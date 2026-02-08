@@ -3,6 +3,9 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import csv
+import logging
+
+logging.basicConfig(level = logging.INFO)
 
 CSV_NAME = "spectral_log.csv"
 
@@ -49,6 +52,7 @@ class SpectralAnalysis:
 
     def parse_new_data(self, input: str, board_id: str | None = None):
         result = input.replace("[DATA] ", "")
+        print(result)
         results = result.split(',')
 
         for i, r in enumerate(self.data):
@@ -62,7 +66,8 @@ class SpectralAnalysis:
         CLR = self.data["CLR"]
 
         if CLR <= 0:
-            raise ValueError("CLR must be > 0 for normalisation")
+            CLR = 1
+            logging.warning("Poor lighting conditions suspected (CLR=0 during normalisation).")
         
         # Normalise F1 to F8 only - leave CLR / NIR
         for band in self.wavelengths:
