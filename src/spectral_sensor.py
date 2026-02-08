@@ -150,7 +150,6 @@ class SpectralSensor:
 
     @skip_if_sim()
     def set_leds_on_during_measurements(self, mode: bool = False) -> None:
-
         self.ser.write(f"changeLedMode({1 if mode else 0})".encode())
         self.check_response()
 
