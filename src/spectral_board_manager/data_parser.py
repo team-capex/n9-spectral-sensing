@@ -1,17 +1,15 @@
-import logging
 import time
 import os
 import matplotlib.pyplot as plt
 import numpy as np
 import csv
 
-logging.basicConfig(level = logging.INFO)
-
-DATA_DIR = "data"
 CSV_NAME = "spectral_log.csv"
 
 class SpectralAnalysis:
-    def __init__(self):
+    def __init__(self, data_dir: str = "data"):
+        self.data_dir = data_dir
+
         self.data = {
             "Violet": 0,
             "Indigo": 0,
@@ -127,7 +125,7 @@ class SpectralAnalysis:
         rgb, hex_color = self._estimate_rgb_from_bands()
 
         # Output directory
-        os.makedirs(DATA_DIR, exist_ok=True)
+        os.makedirs(self.data_dir, exist_ok=True)
 
         fig, ax = plt.subplots(figsize=(8, 4))
 
@@ -153,7 +151,7 @@ class SpectralAnalysis:
 
         if save:
             filename = f"spectrum_{self._timestamp}_{self._board_id}.png"
-            filepath = os.path.join(DATA_DIR, filename)
+            filepath = os.path.join(self.data_dir, filename)
             plt.savefig(filepath, dpi=150, bbox_inches="tight")
 
         plt.close(fig)
@@ -161,8 +159,8 @@ class SpectralAnalysis:
         return rgb, hex_color
     
     def _csv_path(self) -> str:
-        os.makedirs(DATA_DIR, exist_ok=True)
-        return os.path.join(DATA_DIR, CSV_NAME)
+        os.makedirs(self.data_dir, exist_ok=True)
+        return os.path.join(self.data_dir, CSV_NAME)
 
     def _csv_headers(self):
         # Order is explicit and stable

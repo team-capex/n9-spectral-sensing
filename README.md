@@ -1,7 +1,80 @@
-# N9 Spectral Sensing Expansion (Topsoe)
-Firmware, software and PCB files for N9 expansion with spectral colour sensing of well plates.
+# Spectral Sensing Project
 
-## Install Dependencies from PyProject
+Firmware, software and PCB files for spectral colour sensing of multiple well plates in parallel.
+
+## Quick Install
+
+PyPi install (requirements.txt):
+
+```
+parallel-spectral-sensing-boards>=1.0.0
+```
+
+Install from Git:
+
+```
+parallel-spectral-sensing-boards @ git+https://github.com/team-capex/n9-spectral-sensing.git@v1.0.0
+```
+
+## Quick Start
+
+Run a full spectral scan from the terminal, or from your own code, as shown below. A config file must be passed, containing the details of your setup.
+
+```
+spectral-run --config-path config.yaml --runs 1 --interval 10
+```
+
+```
+spectral-run --h
+```
+
+```
+from spectral_board_manager.board_manager import BoardManager
+
+mgr = BoardManager("config.yaml")
+
+try:
+    mgr.run()   # scans all boards simultaneously, dumps results to /data
+finally:
+    mgr.close()
+```
+
+## Example Config File
+```
+data_dir: "data"
+
+boards:
+  - board_id: "board-1"          # Must be unique
+    com_port: "COM5"
+    sensors_in_use: 10           # 1..16
+    sensor_settings:
+      gain: 2                    # 1,2,4,8
+      atime: 30                  # 0..255
+      astep: 600                 # 0..65535
+    sample_type: "liquid"        # "solid" or "liquid" (solid => LEDs_ON true)
+    control_voltage: 5.0         # 0..10, applied only during run()
+
+  - board_id: "board-2"
+    com_port: "COM6"
+    sensors_in_use: 16
+    sensor_settings:
+      gain: 4
+      atime: 20
+      astep: 800
+    sample_type: "solid"
+    control_voltage: 8.0
+```
+
+## Library installation in cloned repository
+
+### Check Python Version
+**Must be python3.10 or greater**
+
+```
+python --version
+```
+
+### Install to local environment
 
 Build venv in root directory:
 
@@ -9,27 +82,53 @@ Build venv in root directory:
 python -m venv .venv
 ```
 
-Upgrade pip:
+Activate venv:
 
 ```
-.venv/bin/pip install --upgrade pip
+source venv/bin/activate
+```
+
+Update pip:
+
+```
+pip install --upgrade pip
 ```
 
 Install dependencies into new venv:
 
 ```
-.venv/bin/pip install -e .
+pip install parallel-spectral-sensing-boards
 ```
 
-Activate venv:
+Verify:
 
 ```
-source .venv/bin/activate
+python -c "from spectral_board_manager import BoardManager; print('OK')"
 ```
 
 Note: Replace *bin* with *Scripts* if using windows.
 
-## Introduction to AS3741 Spectral Sensor #####
+## Flashing Firmware to PCBs (Platformio)
+
+Install the [PlatformIO VSCode Extension](https://docs.platformio.org/en/latest/integration/ide/vscode.html) and open a new Pio terminal (found in *Quick Access/Miscellaneous*). Connect the the target PCB via USB and run the following commands:
+
+```
+cd firmware/spectral-sensor-plate
+```
+
+```
+pio run -t upload
+```
+
+## Introduction to AS3741 Spectral Sensor
+
+### Frequency Bands (F1..F8)
+
+Measured values are raw photodiode counts (ADC output after integration); not color-corrected or normalized and are extremely sensitive to:
+- Illumination spectrum
+- LED aging
+- Distance / angle
+- Surface texture
 
 | Channel | Approx. Wavelength |
 |------|------|
@@ -44,67 +143,33 @@ Note: Replace *bin* with *Scripts* if using windows.
 | CLR | All visible |
 | NIR | ~850–900 nm |
 
-### Raw photodiode counts (ADC output after integration).
-They are not color-corrected or normalized and are extremely sensitive to:
-- Illumination spectrum
-- LED aging
-- Distance / angle
-- Surface texture
+### CLR Signal
 
-### CLR = broadband photodiode with no color filter
-It sees almost the entire visible spectrum (and a bit beyond).
+Measured using a broadband photodiode with no color filter, that sees almost the entire visible spectrum (and a bit beyond).
 Think of it as: “Total visible light intensity” or a reference / normalization channel
 
-Why it exists: 
+Why it is useful: 
 - Normalize spectral channels: Fn / CLR
 - Detect illumination changes.
 - Improve stability across time.
 - If your light source dims by 10%, all F channels drop, but CLR drops too → ratios stay meaningful.
 
-### NIR = Near-Infrared photodiode (~850–900 nm)
-Why this matters:
+### NIR Signal
+
+Measured using a near-infrared photodiode (~850–900 nm).
+Why is is useful:
 - Many white LEDs leak IR.
 - Organic materials often change IR reflectance before visible color shifts.
 - Ambient sunlight has a lot of IR.
 
-Use cases:
+Example use cases:
 - Detect ambient contamination (sunlight vs LED).
 - Correct visible channels (if NIR spikes, your visible data is probably compromised).
 - Feature extraction (especially for fermentation / bio / chemical systems).
 
-If you’re doing controlled illumination, NIR should be:
-- Stable
-- Low
-- Boring
-
-### Why there are two CLR and two NIR readings
-The AS7341 has two ADC paths / measurement groups, internally multiplexed.
-
-They are not different sensors, just:
-- Different integration cycles
-- Different gain paths
-
- In most applications, just pick one CLR and one NIR and be consistent.
-
-## Other Requirements
-
-- Platformio vscode extension to flash firmware to PCBs
-- RS485 converter for MFC
-
-## Flashing Firmware to PCBs (Platformio)
-
-Install the [PlatformIO VSCode Extension](https://docs.platformio.org/en/latest/integration/ide/vscode.html) and open a new Pio terminal (found in *Quick Access/Miscellaneous*). Connect the the target PCB via USB and run the following commands:
-
-```
-cd firmware/loadcell_board
-```
-
-```
-pio run -t upload
-```
-
 ## Hardware References
 
-See [BOM](part_files/BOM.pdf) for complete list.
-
 1. [AS7341 Spectral Sensors](https://ams-osram.com/products/sensor-solutions/ambient-light-color-spectral-proximity-sensors/ams-as7341-11-channel-spectral-color-sensor)
+2. [Neutral LED Backlight](https://www.ledproff.dk/led-paneler-60x30-cm/3116-60x30-led-panel-24w-hvid-kant-8720682000144.html?_gl=1*k4gk14*_up*MQ..*_gs*MQ..&gclid=Cj0KCQiA1czLBhDhARIsAIEc7ujcU2kLfnA-ZHXxeq7G_0TSyTC9MBlyjy6_dsIIG-lkqn9Rp94GhlsaAi2VEALw_wcB&gbraid=0AAAAAo5SzqGEkNimtGc2aU2cM1jruEYBz#/34-kulor-neutral/37-daempbar-ikke_daempbar)
+3. [0-10V Dimmable LED driver](https://www.ledproff.dk/led-paneler-til-indbygning/2923-meanwell-25w-350-1050ma-daempbar-lcm-25-driver-0-10v-daempbar-til-led-panel.html?_gl=1*ok31c7*_up*MQ..&gclid=Cj0KCQiA1czLBhDhARIsAIEc7ujcU2kLfnA-ZHXxeq7G_0TSyTC9MBlyjy6_dsIIG-lkqn9Rp94GhlsaAi2VEALw_wcB&gbraid=0AAAAAo5SzqGEkNimtGc2aU2cM1jruEYBz)
+4. [Heating Cartridge](https://3deksperten.dk/products/spider-heater-cartridge-12v-60w)

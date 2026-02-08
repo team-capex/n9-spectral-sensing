@@ -1,35 +1,64 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
+requires = ["setuptools>=68", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "n9-spectral-sensing-expansion"
+name = "parallel-spectral-sensing-boards"
 authors = [
-    {name = "Flynn Marshall", email = "flyma@dtu.dk"}
+    {name = "Flynn Marshall", email = "flynnmarsh98@gmail.com"}
 ]
 
-description = "Python package to run spectral sensing experiments for N9 through serial communcation with custom PCBs."
-version = "1.0.0"
+description = "Python package for fast gathering of spectral sensor data using custom PCBs in parallel."
+dynamic = ["version"]
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "no-local-version"
+
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
+license = {file="LICENSE"}
 dependencies = [
-    "requests > 2.26.0",
-    "pandas",
-    "numpy",
-    "pyserial",
-    "ipython",
-    "datetime",
-    "matplotlib",
-    "pyyaml",
+    "requests>=2.26.0",
+    "pandas>=2.0",
+    "numpy>=1.23",
+    "pyserial>=3.5",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
 ]
+
+[project.scripts]
+spectral-run = "spectral_board_manager.cli:main"
 
 [project.optional-dependencies]
+dev = [
+  "ipython",
+  "build",
+  "twine",
+]
 lint = [
-    "mypy",
+  "mypy",
+  "ruff",
 ]
 
 [project.urls]
-repository = "https://github.com/flynn-98/parallel-flow-cells.git"
+repository = "https://github.com/team-capex/n9-spectral-sensing.git"
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+n9_spectral_sensing_expansion = ["py.typed", "*.yaml"]
 
 [tool.mypy]
 python_version = "3.10"

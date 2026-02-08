@@ -1,6 +1,5 @@
 import logging
 import time
-import os
 import serial
 
 logging.basicConfig(level = logging.INFO)
@@ -101,15 +100,6 @@ class SpectralSensor:
         logging.info("Closing serial connection to spectral sensor board.")
         if self.ser.isOpen():
             self.ser.close()
-
-    #Serial.println("setHeaterPower(int heater, int power)");
-    #Serial.println("setVoltage(float volts) 0-10V");
-    #Serial.println("setCurrent(float mA) 0-20mA");
-
-    #Serial.println("Sensors:");
-    #Serial.println("readSensor(int sensor)");
-    #Serial.println("fullShutdown()");
-    #Serial.println("wakeAll()");
 
     @skip_if_sim(default_return = "F1=0,F2=0,F3=0,F4=0,F5=0,F6=0,F7=0,F8=0,CLR=0,NIR=0")
     def read_sensor(self, no: int) -> str:
