@@ -4,16 +4,16 @@ Firmware, software and PCB files for spectral colour sensing of multiple well pl
 
 ## Quick Install
 
-PyPi install (requirements.txt):
+PyPi install:
 
 ```
-parallel-spectral-sensing-boards>=1.0.0
+pip install parallel-spectral-sensing-boards
 ```
 
 Install from Git:
 
 ```
-parallel-spectral-sensing-boards @ git+https://github.com/team-capex/n9-spectral-sensing.git@v1.0.0
+pip install "parallel-spectral-sensing-boards @ git+https://github.com/team-capex/n9-spectral-sensing.git@v1.0.0"
 ```
 
 ## Quick Start
@@ -21,13 +21,13 @@ parallel-spectral-sensing-boards @ git+https://github.com/team-capex/n9-spectral
 Run a full spectral scan from the terminal, or from your own code, as shown below. A config file must be passed, containing the details of your setup.
 
 ```
+spectral-run --help
+```
+
+```
 spectral-run --config-path config.yaml --runs 1 --interval 10
 ```
-
-```
-spectral-run --h
-```
-
+***
 ```
 from spectral_board_manager.board_manager import BoardManager
 
@@ -64,8 +64,9 @@ boards:
     sample_type: "solid"
     control_voltage: 8.0
 ```
+*Note: control_voltage is applied only during active acquisition. Between runs and on shutdown, outputs are automatically returned to 0V.*
 
-## Library installation in cloned repository
+## Installation for cloned repository
 
 ### Check Python Version
 **Must be python3.10 or greater**
@@ -85,7 +86,7 @@ python -m venv .venv
 Activate venv:
 
 ```
-source venv/bin/activate
+source .venv/bin/activate
 ```
 
 Update pip:
@@ -97,7 +98,7 @@ pip install --upgrade pip
 Install dependencies into new venv:
 
 ```
-pip install parallel-spectral-sensing-boards
+pip install -e .
 ```
 
 Verify:
@@ -120,11 +121,11 @@ cd firmware/spectral-sensor-plate
 pio run -t upload
 ```
 
-## Introduction to AS3741 Spectral Sensor
+## Introduction to AS7341 Spectral Sensor
 
 ### Frequency Bands (F1..F8)
 
-Measured values are raw photodiode counts (ADC output after integration); not color-corrected or normalized and are extremely sensitive to:
+Measured values are raw photodiode counts (ADC output after integration); not color-corrected or normalised and are extremely sensitive to:
 - Illumination spectrum
 - LED aging
 - Distance / angle
@@ -146,26 +147,18 @@ Measured values are raw photodiode counts (ADC output after integration); not co
 ### CLR Signal
 
 Measured using a broadband photodiode with no color filter, that sees almost the entire visible spectrum (and a bit beyond).
-Think of it as: “Total visible light intensity” or a reference / normalization channel
-
-Why it is useful: 
-- Normalize spectral channels: Fn / CLR
+Think of it as “total visible light intensity” or a reference / normalisation channel. Why it is useful: 
+- Normalise spectral channels: Fn / CLR
 - Detect illumination changes.
 - Improve stability across time.
 - If your light source dims by 10%, all F channels drop, but CLR drops too → ratios stay meaningful.
 
 ### NIR Signal
 
-Measured using a near-infrared photodiode (~850–900 nm).
-Why is is useful:
-- Many white LEDs leak IR.
-- Organic materials often change IR reflectance before visible color shifts.
-- Ambient sunlight has a lot of IR.
-
-Example use cases:
+Measured using a near-infrared photodiode (~850–900 nm). Why it is useful:
 - Detect ambient contamination (sunlight vs LED).
 - Correct visible channels (if NIR spikes, your visible data is probably compromised).
-- Feature extraction (especially for fermentation / bio / chemical systems).
+- Feature extraction (especially for bio / chemical systems).
 
 ## Hardware References
 
@@ -173,3 +166,12 @@ Example use cases:
 2. [Neutral LED Backlight](https://www.ledproff.dk/led-paneler-60x30-cm/3116-60x30-led-panel-24w-hvid-kant-8720682000144.html?_gl=1*k4gk14*_up*MQ..*_gs*MQ..&gclid=Cj0KCQiA1czLBhDhARIsAIEc7ujcU2kLfnA-ZHXxeq7G_0TSyTC9MBlyjy6_dsIIG-lkqn9Rp94GhlsaAi2VEALw_wcB&gbraid=0AAAAAo5SzqGEkNimtGc2aU2cM1jruEYBz#/34-kulor-neutral/37-daempbar-ikke_daempbar)
 3. [0-10V Dimmable LED driver](https://www.ledproff.dk/led-paneler-til-indbygning/2923-meanwell-25w-350-1050ma-daempbar-lcm-25-driver-0-10v-daempbar-til-led-panel.html?_gl=1*ok31c7*_up*MQ..&gclid=Cj0KCQiA1czLBhDhARIsAIEc7ujcU2kLfnA-ZHXxeq7G_0TSyTC9MBlyjy6_dsIIG-lkqn9Rp94GhlsaAi2VEALw_wcB&gbraid=0AAAAAo5SzqGEkNimtGc2aU2cM1jruEYBz)
 4. [Heating Cartridge](https://3deksperten.dk/products/spider-heater-cartridge-12v-60w)
+
+*Note: links are provided as reference examples; equivalent components may be used.*
+
+## Troubleshooting
+
+- If no serial ports are found, check permissions.
+- If flashing fails, ensure no Python process is holding the port.
+- v0 PCBs require small solder job for DAC 0-10V to function (see below). Issue fixed in v0.1.
+
