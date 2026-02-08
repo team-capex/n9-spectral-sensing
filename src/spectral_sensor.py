@@ -84,8 +84,6 @@ class SpectralSensor:
             if "Unknown command" in data:
                 raise RuntimeError("Controller board failed to recognise command: " + data)
 
-            logging.info(data)
-
     def extract_readings(self) -> str:
         while True:
             data = self.get_data()

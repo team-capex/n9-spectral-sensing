@@ -273,11 +273,11 @@ void AS7341Array::setSensorSettings(uint8_t gain, uint8_t atime, uint8_t astep) 
       break;
   }
 
-  if (atime > 1 && atime < 100) {
+  if (atime > 0 && atime <= 255) {
     AS_ATIME = atime;
   }
 
-  if (astep > 1 && astep < 1000) {
+  if (astep > 0 && astep <= 65535) {
     AS_ASTEP = astep;
   }
 
