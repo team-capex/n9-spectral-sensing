@@ -194,7 +194,7 @@ class BoardManager:
 
         # One thread per board is ideal here (serial I/O bound).
         with ThreadPoolExecutor(max_workers=len(self._boards)) as ex:
-            futures = {ex.submit(b.run_once(self.experiment_id)): b.cfg.board_id for b in self._boards}
+            futures = {ex.submit(b.run_once, self.experiment_id): b.cfg.board_id for b in self._boards}
 
             # If any board fails, we surface the exception.
             # Each board still guarantees voltage->0V due to finally block.

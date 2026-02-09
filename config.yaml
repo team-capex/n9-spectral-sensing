@@ -2,7 +2,7 @@ data_dir: "data"
 
 boards:
   - board_id: "board-1"
-    com_port: "/dev/cu.wchusbserial110"
+    com_port: "/dev/cu.wchusbserial10"
     sensors_in_use: 16           # 1..16
     sensor_settings:
       gain: 1                    # 1,2,4,8
@@ -12,7 +12,7 @@ boards:
     control_voltage: 9.0         # 0..10, applied only during run()
 
   - board_id: "board-2"
-    com_port: "/dev/cu.wchusbserial120"
+    com_port: "/dev/cu.wchusbserial1120"
     sensors_in_use: 16           # 1..16
     sensor_settings:
       gain: 1                    # 1,2,4,8

@@ -29,7 +29,17 @@ spectral-run --help
 ```
 spectral-run --config-path config.yaml --runs 1 --interval 10
 ```
+
+```
+spectral-plotter --help
+```
+
+```
+spectral-plotter --csv data/spectral_log.csv --experiment-id 20260209_095600
+```
+
 ***
+
 ```
 from spectral_board_manager.board_manager import BoardManager
 

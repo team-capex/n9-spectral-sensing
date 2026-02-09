@@ -17,6 +17,7 @@ license = {file="LICENSE"}
 dependencies = [
     "requests>=2.26.0",
     "pandas>=2.0",
+    "seaborn==0.12.2",
     "numpy>=1.23",
     "pyserial>=3.5",
     "matplotlib>=3.7",
@@ -32,6 +33,7 @@ classifiers = [
 
 [project.scripts]
 spectral-run = "spectral_board_manager.cli:main"
+spectral-plotter = "spectral_board_manager.plotter:main"
 
 [project.optional-dependencies]
 dev = [
