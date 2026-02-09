@@ -41,6 +41,7 @@ def main() -> None:
         sys.exit(1)
 
     mgr = BoardManager(args.config_path)
+    mgr.experiment_id = time.strftime("%Y%m%d_%H%M%S")
 
     try:
         for i in range(args.runs):

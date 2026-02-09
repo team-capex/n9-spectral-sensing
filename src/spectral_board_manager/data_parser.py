@@ -1,9 +1,9 @@
-import time
 import os
 import matplotlib.pyplot as plt
 import numpy as np
 import csv
 import logging
+from datetime import datetime
 
 logging.basicConfig(level = logging.INFO)
 
@@ -42,6 +42,7 @@ class SpectralAnalysis:
         self._timestamp = None
         self._normalised = None
         self._board_id = None
+        self._experiment_id = None
 
         # Thresholds etc
         # Data structure: [DATA] F1=1,F2=5,F3=6,F4=11,F5=16,F6=23,F7=35,F8=31,CLR=6,NIR=0,SENSOR=1-16
@@ -50,7 +51,7 @@ class SpectralAnalysis:
         r, g, b = [int(np.clip(v, 0, 255)) for v in rgb]
         return f"#{r:02X}{g:02X}{b:02X}"
 
-    def parse_new_data(self, input: str, board_id: str | None = None):
+    def parse_new_data(self, input: str, board_id: str | None = None, experiment_id: str | None = None):
         result = input.replace("[DATA] ", "")
         print(result)
         results = result.split(',')
@@ -58,9 +59,10 @@ class SpectralAnalysis:
         for i, r in enumerate(self.data):
             self.data[r] = int(results[i].split('=')[1]) # take number only
 
-        self._timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+        self._timestamp = datetime.now().isoformat()
         self._normalised = False
         self._board_id = board_id # reset to None if not given
+        self._experiment_id = experiment_id
 
     def normalise_data(self):
         CLR = self.data["CLR"]
@@ -126,6 +128,9 @@ class SpectralAnalysis:
         x = np.array([self.wavelengths[b] for b in bands], dtype=float)
         y = np.array([float(self.data[b]) for b in bands], dtype=float)
 
+        # Sensor #
+        sensor = self.data["SENSOR"]
+
         # Estimate a representative colour from bands
         rgb, hex_color = self._estimate_rgb_from_bands()
 
@@ -144,7 +149,7 @@ class SpectralAnalysis:
         ax.set_ylabel("Normalised Intensity (%)")
         ax.set_ylim(0, 105)
         ax.grid(True)
-        ax.set_title(f"Normalised Spectrum (colour ≈ {hex_color})")
+        ax.set_title(f"Normalised Spectrum (sensor #{sensor}, colour {hex_color})")
 
         # Optional top axis with band labels
         if show_band_labels_top:
@@ -155,7 +160,7 @@ class SpectralAnalysis:
             ax_top.tick_params(axis='x', rotation=25)
 
         if save:
-            filename = f"spectrum_{self._timestamp}_{self._board_id}.png"
+            filename = f"spectrum_{self._timestamp}_{self._board_id}_#{sensor}.png"
             filepath = os.path.join(self.data_dir, filename)
             plt.savefig(filepath, dpi=150, bbox_inches="tight")
 
@@ -171,7 +176,7 @@ class SpectralAnalysis:
         # Order is explicit and stable
         bands = list(self.wavelengths.keys())
         return (
-            ["timestamp", "board_id", "sensor", "hex_color"]
+            ["experiment_id", "timestamp", "board_id", "sensor", "hex_color"]
             + [f"{b}_%" for b in bands]
             + ["CLR_raw", "NIR_raw"]
         )
@@ -196,6 +201,7 @@ class SpectralAnalysis:
 
         bands = list(self.wavelengths.keys())
         row = {
+            "experiment_id": self._experiment_id,
             "timestamp": self._timestamp,
             "board_id": self._board_id,
             "sensor": int(self.data["SENSOR"]),

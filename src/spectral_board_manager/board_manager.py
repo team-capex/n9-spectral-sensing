@@ -72,7 +72,7 @@ class _BoardRuntime:
         v = max(0.0, min(10.0, float(v)))
         self.sensor.set_control_voltage(v)
 
-    def run_once(self) -> None:
+    def run_once(self, experiment_id: str | None = None) -> None:
         """
         One full scan of all active sensors (1..sensors_in_use).
         Control voltage is applied ONLY during this scan, then returned to 0V.
@@ -86,7 +86,7 @@ class _BoardRuntime:
                 data = self.sensor.read_sensor(i)
 
                 # Parse to extract and label data
-                self.analyser.parse_new_data(data, self.cfg.board_id)
+                self.analyser.parse_new_data(data, self.cfg.board_id, experiment_id)
 
                 # Plot and estimate HEX colour
                 _, hex_color = self.analyser.plot_normalised_spectrum()
@@ -123,6 +123,9 @@ class BoardManager:
     def __init__(self, config_path: str):
         self.config_path = config_path
         self.cfg = self._load_config(config_path)
+
+        # Populated by CLI
+        self.experiment_id = None
 
         if len(self.cfg.boards) > self.MAX_BOARDS:
             raise ValueError(f"config has {len(self.cfg.boards)} boards; max is {self.MAX_BOARDS}")
@@ -191,7 +194,7 @@ class BoardManager:
 
         # One thread per board is ideal here (serial I/O bound).
         with ThreadPoolExecutor(max_workers=len(self._boards)) as ex:
-            futures = {ex.submit(b.run_once): b.cfg.board_id for b in self._boards}
+            futures = {ex.submit(b.run_once(self.experiment_id)): b.cfg.board_id for b in self._boards}
 
             # If any board fails, we surface the exception.
             # Each board still guarantees voltage->0V due to finally block.

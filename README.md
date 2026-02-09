@@ -2,6 +2,8 @@
 
 Firmware, software and PCB files for spectral colour sensing of multiple well plates in parallel.
 
+![PCB](pcb_files/pcb.png)
+
 ## Quick Install
 
 PyPi install:
@@ -32,6 +34,7 @@ spectral-run --config-path config.yaml --runs 1 --interval 10
 from spectral_board_manager.board_manager import BoardManager
 
 mgr = BoardManager("config.yaml")
+mgr.experiment_id = "12345" # for filtering data
 
 try:
     mgr.run()   # scans all boards simultaneously, dumps results to /data
@@ -173,5 +176,8 @@ Measured using a near-infrared photodiode (~850–900 nm). Why it is useful:
 
 - If no serial ports are found, check permissions.
 - If flashing fails, ensure no Python process is holding the port.
+- Maximum 9V to LCM-25 dimmable LED driver (LED panel rated for 560mA, driver gives 600mA at 10V).
 - v0 PCBs require small solder job for DAC 0-10V to function (see below). Issue fixed in v0.1.
 
+![PCB V0](pcb_files/pcb_v0_fix.png)
+*3V3 soldered to C27 as shown*
