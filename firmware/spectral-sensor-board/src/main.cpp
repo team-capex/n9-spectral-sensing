@@ -88,6 +88,11 @@ void loop() {
       req_index = Serial.readStringUntil(')').toInt();
 
       if (sensors.readSpectral(req_index, d)) {
+
+        uint8_t atime = sensors._as7341.getATIME();
+        uint16_t astep = sensors._as7341.getASTEP();
+        auto gain = sensors._as7341.getGain();
+
         Serial.printf("[DATA] F1=%u,F2=%u,F3=%u,F4=%u,F5=%u,F6=%u,F7=%u,F8=%u,CLR=%u,NIR=%u,SENSOR=%u\n",
                       d.F1, d.F2, d.F3, d.F4, d.F5, d.F6, d.F7, d.F8, d.CLEAR, d.NIR, req_index);
       } else {

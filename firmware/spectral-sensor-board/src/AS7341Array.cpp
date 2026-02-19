@@ -261,7 +261,7 @@ void AS7341Array::loopLEDs() {
   closeAll();
 }
 
-void AS7341Array::setSensorSettings(uint8_t gain, uint8_t atime, uint8_t astep) {
+void AS7341Array::setSensorSettings(uint8_t gain, uint8_t atime, uint32_t astep) {
   switch (gain) {
     case 1:
       AS_GAIN = AS7341_GAIN_1X;
@@ -275,15 +275,32 @@ void AS7341Array::setSensorSettings(uint8_t gain, uint8_t atime, uint8_t astep) 
     case 8:
       AS_GAIN = AS7341_GAIN_8X;
       break;
+    case 16:
+      AS_GAIN = AS7341_GAIN_16X;
+      break;
+    case 32:
+      AS_GAIN = AS7341_GAIN_32X;
+      break;
+    case 64:
+      AS_GAIN = AS7341_GAIN_64X;
+      break;
+    case 128:
+      AS_GAIN = AS7341_GAIN_128X;
+      break;
+    case 256:
+      AS_GAIN = AS7341_GAIN_256X;
+      break;
   }
 
-  if (atime > 0 && atime <= 255) {
-    AS_ATIME = atime;
-  }
+  // check limits
+  if (atime < 1) atime = 1;
+  if (atime > 255) atime = 255;
 
-  if (astep > 0 && astep <= 65535) {
-    AS_ASTEP = astep;
-  }
+  if (astep < 1UL) astep = 1UL;
+  if (astep > 65535UL) astep = 65535UL;
+
+  AS_ATIME = atime;
+  AS_ASTEP = astep;
 
 }
 

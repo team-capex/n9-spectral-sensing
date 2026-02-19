@@ -79,13 +79,14 @@ public:
   void closeAll();
 
   // Lets user change gain, exposure time etc.
-  void setSensorSettings(uint8_t gain, uint8_t atime, uint8_t astep);
+  void setSensorSettings(uint8_t gain, uint8_t atime, uint32_t astep);
   void setLedMode(bool mode = false);
 
-private:
   // Single Adafruit object reused for all sensors (address always 0x39).
   Adafruit_AS7341 _as7341;
 
+private:
+  
   // Tracks currently-open path (for sanity/protection).
   bool _channelOpen = false;
   uint8_t _activeMuxAddr = 0;
