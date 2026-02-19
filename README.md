@@ -2,7 +2,7 @@
 
 Firmware, software and PCB files for spectral colour sensing of multiple well plates in parallel.
 
-![PCB](pcb_files/pcb.png)
+![PCB](part_files/assy.jpg)
 
 ## Quick Install
 
