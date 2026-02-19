@@ -24,8 +24,8 @@ static const uint32_t I2C_FREQ = 400000;
 // Hard-coded AS7341 settings (as requested)
 // ============================================================
 static as7341_gain_t AS_GAIN = AS7341_GAIN_1X;
-static uint8_t AS_ATIME = 29;
-static uint16_t AS_ASTEP = 599;
+static uint8_t AS_ATIME = 30;
+static uint16_t AS_ASTEP = 600;
 static const uint8_t LED_CURRENT = 5; //mA (don't change, reasonable max for LED life)
 
 static bool LED_DURING_MEASUREMENT = false;

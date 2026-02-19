@@ -5,18 +5,8 @@ boards:
     com_port: "/dev/cu.wchusbserial10"
     sensors_in_use: 16           # 1..16
     sensor_settings:
-      gain: 1                    # 1,2,4,8
-      atime: 30                  # 0..255
+      gain: 32                    # 1,2,4,8
+      atime: 255                  # 0..255
       astep: 600                 # 0..65535
-    sample_type: "solid"        # "solid" or "liquid" (solid => LEDs_ON true)
+    sample_type: "liquid"        # "solid" or "liquid" (solid => LEDs_ON true)
     control_voltage: 9.0         # 0..10, applied only during run()
-
-  - board_id: "board-2"
-    com_port: "/dev/cu.wchusbserial1120"
-    sensors_in_use: 16           # 1..16
-    sensor_settings:
-      gain: 1                    # 1,2,4,8
-      atime: 30                  # 0..255
-      astep: 600                 # 0..65535
-    sample_type: "solid"        # "solid" or "liquid" (solid => LEDs_ON true)
-    control_voltage: 0.0         # 0..10, applied only during run()
