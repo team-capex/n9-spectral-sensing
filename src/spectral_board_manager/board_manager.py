@@ -200,7 +200,7 @@ class BoardManager:
             raw = yaml.safe_load(f)
 
         data_dir = raw.get("data_dir", "./data")
-        boards_raw = raw.get("boards", [])
+        boards_raw = raw.get("PCBs", [])
         boards: List[BoardConfig] = []
 
         for b in boards_raw:

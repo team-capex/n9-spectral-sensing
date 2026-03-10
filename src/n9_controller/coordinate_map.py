@@ -191,11 +191,11 @@ class CoordinateMap:
         """
         Build a CoordinateMap from the parsed config.yaml dict.
 
-        Expected top-level keys: pcb_boards, sample_holders, test_cell.
+        Expected top-level keys: sensing_stations, sample_holders, test_cell.
         """
         pcb_layouts = [
             PCBBoardLayout(
-                pcb_id=p["pcb_id"],
+                pcb_id=p["id"],
                 board_id=p["board_id"],
                 origin_xyz=tuple(p["origin_xyz"]),       # type: ignore[arg-type]
                 col_spacing_mm=float(p["col_spacing_mm"]),
@@ -203,7 +203,7 @@ class CoordinateMap:
                 pick_z_mm=float(p["pick_z_mm"]),
                 dispense_z_mm=float(p["dispense_z_mm"]),
             )
-            for p in cfg.get("pcb_boards", [])
+            for p in cfg.get("sensing_stations", [])
         ]
 
         holder_layouts = [

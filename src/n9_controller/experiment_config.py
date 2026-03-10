@@ -101,7 +101,7 @@ class ExperimentConfig:
     """
     experiment_id: str
     description: str
-    pcb_boards: list[str]           # pcb_ids from config.yaml
+    sensing_stations: list[str]     # sensing station ids from config.yaml
     sample_holders: list[str]       # holder_ids from config.yaml
     samples: list[SampleSpec]
     scanning: ScanningConfig
@@ -140,9 +140,9 @@ def load_experiment(path: str) -> ExperimentConfig:
 
     description = str(raw.get("description", ""))
 
-    pcb_boards = [str(x) for x in raw.get("pcb_boards", [])]
-    if not pcb_boards:
-        raise ValueError("experiment.yaml must specify at least one entry in 'pcb_boards'.")
+    sensing_stations = [str(x) for x in raw.get("sensing_stations", [])]
+    if not sensing_stations:
+        raise ValueError("experiment.yaml must specify at least one entry in 'sensing_stations'.")
 
     sample_holders = [str(x) for x in raw.get("sample_holders", [])]
     if not sample_holders:
@@ -211,7 +211,7 @@ def load_experiment(path: str) -> ExperimentConfig:
     return ExperimentConfig(
         experiment_id=experiment_id,
         description=description,
-        pcb_boards=pcb_boards,
+        sensing_stations=sensing_stations,
         sample_holders=sample_holders,
         samples=samples,
         scanning=scanning,

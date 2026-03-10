@@ -14,8 +14,8 @@ experiment_id: "exp-20260310-nickel-congo-red"
 description: "Nickel ion detection with Congo Red dye — 3 concentrations"
 
 # PCB board IDs to use (must match pcb_id values in config.yaml pcb_boards section).
-pcb_boards:
-  - pcb-1
+sensing_stations:
+  - sensing_station-1
 
 # Sample holder IDs to draw from (must match holder_id values in config.yaml).
 sample_holders:

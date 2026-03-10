@@ -103,10 +103,10 @@ class ExperimentRunner:
         self.board_manager = BoardManager(config_path)
         self.board_manager.experiment_id = self.exp_cfg.experiment_id
 
-        # Resolve board_id → pcb_id mapping
+        # Resolve board_id → sensing station id mapping
         self._board_to_pcb: dict[str, str] = {
-            p["board_id"]: p["pcb_id"]
-            for p in self._raw_cfg.get("pcb_boards", [])
+            p["board_id"]: p["id"]
+            for p in self._raw_cfg.get("sensing_stations", [])
         }
 
         # Initialise or resume experiment state
@@ -124,8 +124,8 @@ class ExperimentRunner:
             self.state = ExperimentState.new(
                 experiment_id=self.exp_cfg.experiment_id,
                 pcb_layouts=[
-                    self.coord_map.pcb_layout(pid)
-                    for pid in self.exp_cfg.pcb_boards
+                    self.coord_map.pcb_layout(sid)
+                    for sid in self.exp_cfg.sensing_stations
                 ],
                 holder_layouts=[
                     self.coord_map.holder_layout(hid)
@@ -523,7 +523,7 @@ class ExperimentRunner:
                 # Build label map: {board_id: {sensor_no: {sample_id, sample_type, dye_type}}}
                 sensor_labels: dict[str, dict[int, dict]] = {}
                 for board_id, pcb_id in self._board_to_pcb.items():
-                    if pcb_id in self.exp_cfg.pcb_boards:
+                    if pcb_id in self.exp_cfg.sensing_stations:
                         sensor_labels[board_id] = self.state.get_labels_for_scan(pcb_id)
 
                 self.board_manager.run(sensor_labels=sensor_labels)
