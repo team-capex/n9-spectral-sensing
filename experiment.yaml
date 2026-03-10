@@ -1,0 +1,94 @@
+# experiment.yaml
+# ================
+# Defines one complete experiment run for the N9 spectral sensing platform.
+#
+# Run with:
+#   experiment-run --config config.yaml --experiment experiment.yaml
+#
+# To resume an interrupted experiment:
+#   experiment-run --config config.yaml --experiment experiment.yaml --resume
+
+# Unique identifier for this experiment.
+# If omitted, an ISO timestamp is generated automatically.
+experiment_id: "exp-20260310-nickel-congo-red"
+description: "Nickel ion detection with Congo Red dye — 3 concentrations"
+
+# PCB board IDs to use (must match pcb_id values in config.yaml pcb_boards section).
+pcb_boards:
+  - pcb-1
+
+# Sample holder IDs to draw from (must match holder_id values in config.yaml).
+sample_holders:
+  - holder-1
+
+# Path to the JSON file that declares the initial state of each holder slot.
+# Edit holder_state.json to match the physical samples you have loaded before
+# starting the experiment.
+holder_state_path: "holder_state.json"
+
+# Samples to pull from the holder and load onto PCB sensor wells.
+# sample_type must match the 'sample_type' values in holder_state.json.
+# dye_type identifies the dye reagent to be dispensed over this sample group.
+samples:
+  - sample_type: "nickel_0ppm"
+    dye_type: "congo_red"
+    count: 4                  # take 4 blank (0 ppm) reference samples
+
+  - sample_type: "nickel_50ppm"
+    dye_type: "congo_red"
+    count: 4
+
+  - sample_type: "nickel_100ppm"
+    dye_type: "congo_red"
+    count: 4
+
+# Colour scanning schedule.
+scanning:
+  interval_minutes: 30        # time between successive full PCB board scans
+  total_duration_hours: 24.0  # total length of the colour experiment
+
+# Dye dispense settings (hardware-specific parameters go in config.yaml dispenser section).
+dispense:
+  volume_ul: 50.0             # volume dispensed per sensor well (microlitres)
+
+# Optional test-cell electrochemical experiment.
+# Set enabled: false to skip all test-cell steps.
+# protocol is a placeholder identifier — implement the hardware driver in
+# experiment_runner._run_test_cell_protocol() before setting enabled: true.
+test_cell_experiment:
+  enabled: false              # set to true once test-cell hardware is implemented
+  protocol: "placeholder_CV_scan"
+  samples:
+    - sample_type: "nickel_100ppm"
+      count: 2               # run 2 high-concentration samples through test cell
+
+# Ordered list of experiment steps.
+# Each action maps to a method on ExperimentRunner.
+# Remove or comment out steps you do not need for a given run.
+steps:
+  - action: home_robot                 # home robot and dispenser
+
+  - action: load_samples_to_pcb       # pick samples from holder, place on PCB wells
+
+  - action: dispense_dye_to_pcb       # dispense dye to each loaded PCB well
+                                      # (skipped silently if dispenser.simulate: true)
+
+  - action: start_colour_scanning     # launch background periodic scanning thread
+
+  # While colour scanning runs, optionally move other samples to the test cell
+  # for electrochemical experiments (enable test_cell_experiment above first).
+  - action: run_test_cell_experiments
+
+  - action: wait_for_colour_scanning  # block until scanning.total_duration_hours elapses
+
+  # After colour experiments: optionally run PCB samples through test cell before return.
+  # Requires test_cell_experiment.enabled: true.
+  - action: post_colour_test_cell
+
+  - action: return_all_to_holder      # return any remaining PCB samples to holder
+
+  - action: report_cleaning_needed    # print + write cleaning report
+
+# Output settings.
+output:
+  cleaning_report_path: "data/cleaning_report.txt"

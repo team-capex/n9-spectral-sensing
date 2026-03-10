@@ -22,6 +22,9 @@ dependencies = [
     "pyserial>=3.5",
     "matplotlib>=3.7",
     "pyyaml>=6.0",
+    # NOTE: the 'north' package for N9 robot hardware is NOT on PyPI.
+    # Install it separately following North Robotics instructions.
+    # Without it, set robot.simulate: true in config.yaml to run without hardware.
 ]
 
 classifiers = [
@@ -34,6 +37,7 @@ classifiers = [
 [project.scripts]
 spectral-run = "spectral_board_manager.cli:main"
 spectral-plotter = "spectral_board_manager.plotter:main"
+experiment-run = "n9_controller.experiment_runner:main"
 
 [project.optional-dependencies]
 dev = [

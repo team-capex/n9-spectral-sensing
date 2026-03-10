@@ -137,9 +137,23 @@ class SpectralSensor:
         self.ser.write(f"changeLedMode({1 if mode else 0})".encode())
         self.check_response()
 
+    @skip_if_sim(default_return=25.0)
+    def get_temperature(self) -> float:
+        """Return average of NTC probes on pins 1 and 2 (°C)."""
+        self.ser.write("getTemperature(1)".encode())
+        t1 = float(self.get_data().strip())
+        self.ser.write("getTemperature(2)".encode())
+        t2 = float(self.get_data().strip())
+        return (t1 + t2) / 2.0
 
+    @skip_if_sim()
+    def set_temperature_target(self, target_c: float) -> None:
+        """Send PID temperature target to firmware (resets integral on device)."""
+        self.ser.write(f"setTemperatureTarget({target_c:.2f})".encode())
+        self.check_response()
 
-       
-        
-        
-    
+    @skip_if_sim()
+    def clear_temperature_target(self) -> None:
+        """Disable PID control and set both heaters to 0%."""
+        self.ser.write("clearTemperatureTarget()".encode())
+        self.check_response()

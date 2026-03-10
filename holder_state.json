@@ -1,0 +1,39 @@
+{
+  "_comment": [
+    "holder_state.json",
+    "===================",
+    "Declares the initial contents of each sample holder slot before an experiment.",
+    "",
+    "Edit this file to match the physical samples you have loaded in the holder.",
+    "Slots not listed here default to EMPTY.",
+    "",
+    "Fields per slot:",
+    "  col         : 0-indexed column (0..4 for a 5-column holder)",
+    "  row         : 0-indexed row    (0..17 for an 18-row holder)",
+    "  state       : FRESH | EMPTY | USED | CLEAN",
+    "  sample_type : free string identifying the sample (e.g. 'nickel_100ppm')",
+    "  sample_id   : unique ID — convention: '{holder_id}_c{col:02d}_r{row:02d}'",
+    "",
+    "FRESH  = new, unused sample present",
+    "EMPTY  = no sample present",
+    "USED   = sample returned after experiment (needs cleaning)",
+    "CLEAN  = cleaned slot, ready for reuse"
+  ],
+
+  "holder-1": [
+    {"col": 0, "row": 0,  "state": "FRESH", "sample_type": "nickel_0ppm",   "sample_id": "holder-1_c00_r00"},
+    {"col": 1, "row": 0,  "state": "FRESH", "sample_type": "nickel_0ppm",   "sample_id": "holder-1_c01_r00"},
+    {"col": 2, "row": 0,  "state": "FRESH", "sample_type": "nickel_0ppm",   "sample_id": "holder-1_c02_r00"},
+    {"col": 3, "row": 0,  "state": "FRESH", "sample_type": "nickel_0ppm",   "sample_id": "holder-1_c03_r00"},
+
+    {"col": 0, "row": 1,  "state": "FRESH", "sample_type": "nickel_50ppm",  "sample_id": "holder-1_c00_r01"},
+    {"col": 1, "row": 1,  "state": "FRESH", "sample_type": "nickel_50ppm",  "sample_id": "holder-1_c01_r01"},
+    {"col": 2, "row": 1,  "state": "FRESH", "sample_type": "nickel_50ppm",  "sample_id": "holder-1_c02_r01"},
+    {"col": 3, "row": 1,  "state": "FRESH", "sample_type": "nickel_50ppm",  "sample_id": "holder-1_c03_r01"},
+
+    {"col": 0, "row": 2,  "state": "FRESH", "sample_type": "nickel_100ppm", "sample_id": "holder-1_c00_r02"},
+    {"col": 1, "row": 2,  "state": "FRESH", "sample_type": "nickel_100ppm", "sample_id": "holder-1_c01_r02"},
+    {"col": 2, "row": 2,  "state": "FRESH", "sample_type": "nickel_100ppm", "sample_id": "holder-1_c02_r02"},
+    {"col": 3, "row": 2,  "state": "FRESH", "sample_type": "nickel_100ppm", "sample_id": "holder-1_c03_r02"}
+  ]
+}

@@ -43,6 +43,8 @@ class SpectralAnalysis:
         self._normalised = None
         self._board_id = None
         self._experiment_id = None
+        self._labels: dict = {}      # optional sample metadata: sample_id, sample_type, dye_type
+        self._temp_c: float | None = None
 
         # Thresholds etc
         # Data structure: [DATA] F1=1,F2=5,F3=6,F4=11,F5=16,F6=23,F7=35,F8=31,CLR=6,NIR=0,SENSOR=1-16
@@ -51,9 +53,30 @@ class SpectralAnalysis:
         r, g, b = [int(np.clip(v, 0, 255)) for v in rgb]
         return f"#{r:02X}{g:02X}{b:02X}"
 
-    def parse_new_data(self, input: str, board_id: str | None = None, experiment_id: str | None = None):
+    def parse_new_data(
+        self,
+        input: str,
+        board_id: str | None = None,
+        experiment_id: str | None = None,
+        labels: dict | None = None,
+        temp_c: float | None = None,
+    ):
+        """
+        Parse a raw data string from the firmware.
+
+        Args:
+            input:         Raw data string e.g. "[DATA] F1=1,F2=5,...,SENSOR=3"
+            board_id:      Board identifier for CSV logging.
+            experiment_id: Experiment identifier for CSV logging.
+            labels:        Optional sample metadata dict with keys
+                           'sample_id', 'sample_type', 'dye_type'.
+                           When provided these are written as additional CSV columns.
+                           Callers that do not pass labels get None in those columns
+                           (backward-compatible — no KeyError).
+            temp_c:        Optional board temperature (°C) at scan time, written to CSV.
+        """
         result = input.replace("[DATA] ", "")
-        print(result)
+        logging.debug("Parsing spectral data: %s", result)
         results = result.split(',')
 
         for i, r in enumerate(self.data):
@@ -63,6 +86,8 @@ class SpectralAnalysis:
         self._normalised = False
         self._board_id = board_id # reset to None if not given
         self._experiment_id = experiment_id
+        self._labels = labels or {}
+        self._temp_c = temp_c
 
     def normalise_data(self):
         CLR = self.data["CLR"]
@@ -173,10 +198,14 @@ class SpectralAnalysis:
         return os.path.join(self.data_dir, CSV_NAME)
 
     def _csv_headers(self):
-        # Order is explicit and stable
+        # Order is explicit and stable.
+        # sample_id / sample_type / dye_type are populated by the n9_controller
+        # experiment runner when samples are tracked. For standalone spectral-run
+        # usage these columns are present but contain None.
         bands = list(self.wavelengths.keys())
         return (
-            ["experiment_id", "timestamp", "board_id", "sensor", "hex_color"]
+            ["experiment_id", "timestamp", "board_id", "sensor", "hex_color",
+             "sample_id", "sample_type", "dye_type", "temp_c"]
             + [f"{b}_%" for b in bands]
             + ["CLR_raw", "NIR_raw"]
         )
@@ -206,6 +235,10 @@ class SpectralAnalysis:
             "board_id": self._board_id,
             "sensor": int(self.data["SENSOR"]),
             "hex_color": hex_color,
+            "sample_id":   self._labels.get("sample_id"),
+            "sample_type": self._labels.get("sample_type"),
+            "dye_type":    self._labels.get("dye_type"),
+            "temp_c":      round(self._temp_c, 3) if self._temp_c is not None else None,
             **{f"{b}_%": float(self.data[b]) for b in bands},
             "CLR_raw": int(self.data["CLR"]),
             "NIR_raw": int(self.data["NIR"]),
