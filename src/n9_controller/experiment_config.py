@@ -28,9 +28,11 @@ import yaml
 VALID_STEPS: frozenset[str] = frozenset({
     "home_robot",
     "load_samples_to_pcb",
+    "load_from_legacy_rack_to_pcb",
     "dispense_dye_to_pcb",
     "start_colour_scanning",
     "run_test_cell_experiments",
+    "run_ni_test_cell_loop",
     "wait_for_colour_scanning",
     "post_colour_test_cell",
     "return_all_to_holder",
@@ -43,16 +45,19 @@ VALID_STEPS: frozenset[str] = frozenset({
 @dataclass(frozen=True)
 class SampleSpec:
     """One group of samples to be used in the experiment."""
-    sample_type: str    # e.g. "nickel_100ppm"
-    dye_type: str       # e.g. "congo_red"
-    count: int          # how many of this type to pull from the holder
+    sample_type: str            # e.g. "PC" or "Ni"
+    count: int                  # how many of this type to use
+    source: str = "holder"      # "holder" | legacy rack id (e.g. "legacy-rack-1")
+    destination: str = "pcb"    # "pcb" | "test_cell"
+    dye_type: str = ""          # dye to dispense (empty if pre-filled or test cell)
 
 
 @dataclass(frozen=True)
 class ScanningConfig:
     """Colour scanning schedule."""
-    interval_minutes: float     # time between successive full board scans
-    total_duration_hours: float # total colour experiment duration
+    interval_minutes: float     # time between successive full board scans (0 = continuous)
+    total_duration_hours: float # total colour experiment duration (0 = until stopped)
+    temperature_control: bool = False  # True = wait for boards to reach target temp
 
 
 @dataclass(frozen=True)
@@ -77,6 +82,15 @@ class TestCellConfig:
 
 
 @dataclass(frozen=True)
+class TestCellDemoConfig:
+    """Settings for the demo Ni-strip test cell loop."""
+    fill_pump: str          # peristaltic pump name to fill the cell (e.g. "H2O_ECELL")
+    fill_volume_ml: float   # volume to fill the cell (mL)
+    wait_time_s: float      # how long to hold the sample in the filled cell (seconds)
+    drain_pump: str = "Drain"  # peristaltic pump name to drain the cell
+
+
+@dataclass(frozen=True)
 class OutputConfig:
     """Output paths and flags."""
     cleaning_report_path: str = "data/cleaning_report.txt"
@@ -91,9 +105,11 @@ class ExperimentConfig:
     execute. Valid step names:
         home_robot
         load_samples_to_pcb
+        load_from_legacy_rack_to_pcb
         dispense_dye_to_pcb
         start_colour_scanning
         run_test_cell_experiments
+        run_ni_test_cell_loop
         wait_for_colour_scanning
         post_colour_test_cell
         return_all_to_holder
@@ -101,15 +117,18 @@ class ExperimentConfig:
     """
     experiment_id: str
     description: str
-    sensing_stations: list[str]     # sensing station ids from config.yaml
-    sample_holders: list[str]       # holder_ids from config.yaml
+    sensing_stations: list[str]         # sensing station ids from config.yaml
+    sample_holders: list[str]           # holder_ids from config.yaml
+    legacy_racks: list[str]             # legacy rack ids from config.yaml
     samples: list[SampleSpec]
     scanning: ScanningConfig
     dispense: DispenseConfig
     test_cell_experiment: TestCellConfig
+    test_cell_demo: Optional[TestCellDemoConfig]
     steps: list[str]
     output: OutputConfig
-    holder_state_path: str          # path to holder_state.json
+    holder_state_path: str              # path to holder_state.json
+    legacy_rack_state_path: str         # path to legacy_rack_state.json
 
 
 def load_experiment(path: str) -> ExperimentConfig:
@@ -145,8 +164,9 @@ def load_experiment(path: str) -> ExperimentConfig:
         raise ValueError("experiment.yaml must specify at least one entry in 'sensing_stations'.")
 
     sample_holders = [str(x) for x in raw.get("sample_holders", [])]
-    if not sample_holders:
-        raise ValueError("experiment.yaml must specify at least one entry in 'sample_holders'.")
+    # sample_holders may be empty (e.g. demo uses legacy rack only)
+
+    legacy_racks = [str(x) for x in raw.get("legacy_racks", [])]
 
     # Samples
     raw_samples = raw.get("samples", [])
@@ -155,8 +175,10 @@ def load_experiment(path: str) -> ExperimentConfig:
     samples = [
         SampleSpec(
             sample_type=str(s["sample_type"]),
-            dye_type=str(s["dye_type"]),
             count=int(s["count"]),
+            source=str(s.get("source", "holder")),
+            destination=str(s.get("destination", "pcb")),
+            dye_type=str(s.get("dye_type", "")),
         )
         for s in raw_samples
     ]
@@ -166,6 +188,7 @@ def load_experiment(path: str) -> ExperimentConfig:
     scanning = ScanningConfig(
         interval_minutes=float(sc.get("interval_minutes", 30.0)),
         total_duration_hours=float(sc.get("total_duration_hours", 24.0)),
+        temperature_control=bool(sc.get("temperature_control", False)),
     )
 
     # Dispense
@@ -205,19 +228,34 @@ def load_experiment(path: str) -> ExperimentConfig:
         cleaning_report_path=str(oc.get("cleaning_report_path", "data/cleaning_report.txt")),
     )
 
-    # Holder state init file
+    # Test cell demo (Ni strip loop)
+    tcd = raw.get("test_cell_demo")
+    test_cell_demo: Optional[TestCellDemoConfig] = None
+    if tcd:
+        test_cell_demo = TestCellDemoConfig(
+            fill_pump=str(tcd.get("fill_pump", "H2O_ECELL")),
+            fill_volume_ml=float(tcd.get("fill_volume_ml", 11.5)),
+            wait_time_s=float(tcd.get("wait_time_s", 60.0)),
+            drain_pump=str(tcd.get("drain_pump", "Drain")),
+        )
+
+    # State init file paths
     holder_state_path = str(raw.get("holder_state_path", "holder_state.json"))
+    legacy_rack_state_path = str(raw.get("legacy_rack_state_path", "legacy_rack_state.json"))
 
     return ExperimentConfig(
         experiment_id=experiment_id,
         description=description,
         sensing_stations=sensing_stations,
         sample_holders=sample_holders,
+        legacy_racks=legacy_racks,
         samples=samples,
         scanning=scanning,
         dispense=dispense,
         test_cell_experiment=test_cell,
+        test_cell_demo=test_cell_demo,
         steps=steps,
         output=output,
         holder_state_path=holder_state_path,
+        legacy_rack_state_path=legacy_rack_state_path,
     )

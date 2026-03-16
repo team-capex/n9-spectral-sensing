@@ -5,15 +5,29 @@ Thin wrapper around the 'north' Python package for N9 robot control.
 
 Provides:
   - Simulation mode (logs all moves without calling hardware)
-  - High-level pick/place/transfer helpers
+  - High-level pick/place/transfer helpers with automatic post-move homing
   - Consistent safe-height travel pattern for all XY moves
+  - Encoder-count goto() for test-cell positioning
+  - Test-cell piston deposit/retrieval helpers
 
 north API functions used:
     home_robot()
     goto_xy_safe(x, y)
     goto_z_safe(z)
+    goto(counts)          — direct encoder-count move [gripper, elbow, shoulder, z_axis]
     open_gripper()
     close_gripper()
+
+Test-cell workflow (encoder-count based):
+    1. robot.pick_from(rack_x, rack_y, 44.0)          — pick sample from legacy rack
+    2. robot.lower_into_test_cell(insert_counts)       — goto insert pos, open gripper
+    3. pump_ctrl.engage_piston()                       — clamp sample
+    4. pump_ctrl.fill_peristaltic("H2O_ECELL", vol)   — fill cell
+    5. time.sleep(wait_s)
+    6. pump_ctrl.drain()                               — empty cell
+    7. pump_ctrl.release_piston()                      — unclamp
+    8. robot.retrieve_from_test_cell(insert_counts)    — goto insert pos, close gripper
+    9. robot.place_at(rack_x, rack_y, 44.0)            — return to rack
 
 Usage (simulation):
     robot = N9RobotController(simulate=True)
@@ -70,6 +84,21 @@ class N9RobotController:
 
     # ── Low-level wrappers ────────────────────────────────────────────────────
 
+    def goto(self, counts: list) -> None:
+        """
+        Direct encoder-count move via north API's goto().
+
+        Used for test-cell positions where precise kinematic positioning is
+        required and the coordinates are defined in encoder space.
+
+        Args:
+            counts: [gripper, elbow, shoulder, z_axis] encoder count values.
+        """
+        if self.simulate:
+            logger.info("[SIM] goto(%s)", counts)
+            return
+        _north.goto(counts)
+
     def home(self) -> None:
         """Run the robot homing sequence."""
         if self.simulate:
@@ -111,6 +140,20 @@ class N9RobotController:
         """Move Z to safe travel height."""
         self.move_z(self.safe_travel_z_mm)
 
+    def home_after_move(self) -> None:
+        """
+        Two-step homing to correct robot drift after every high-level move.
+
+        Step 1: Fast XY travel to origin (0, 0) via goto_xy_safe — quick.
+        Step 2: Full home sequence via home_robot() — slow but precise.
+
+        Called automatically at the end of pick_from(), place_at(),
+        lower_into_test_cell(), and retrieve_from_test_cell().
+        """
+        logger.info("Homing after move: returning to origin then running home sequence.")
+        self.move_xy(0.0, 0.0)
+        self.home()
+
     def pick_from(self, x: float, y: float, pick_z: float) -> None:
         """
         Full pick sequence:
@@ -125,6 +168,7 @@ class N9RobotController:
         self.move_z(pick_z)
         self.close_gripper()
         self.raise_to_safe()
+        self.home_after_move()
 
     def place_at(self, x: float, y: float, place_z: float) -> None:
         """
@@ -138,6 +182,7 @@ class N9RobotController:
         self.move_z(place_z)
         self.open_gripper()
         self.raise_to_safe()
+        self.home_after_move()
 
     def transfer(
         self,
@@ -162,27 +207,45 @@ class N9RobotController:
         self.pick_from(fx, fy, from_pick_z if from_pick_z is not None else fz)
         self.place_at(tx, ty, to_place_z if to_place_z is not None else tz)
 
-    # ── Test-cell helpers ─────────────────────────────────────────────────────
+    # ── Test-cell helpers (encoder-count based) ───────────────────────────────
 
-    def move_to_test_cell(
-        self,
-        from_xyz: tuple[float, float, float],
-        test_cell_xyz: tuple[float, float, float],
-        from_pick_z: Optional[float] = None,
-    ) -> None:
+    def lower_into_test_cell(self, insert_counts: list) -> None:
         """
-        Pick a sample from from_xyz and place it in the test cell.
-        Raises to safe height between moves.
-        """
-        self.transfer(from_xyz, test_cell_xyz, from_pick_z=from_pick_z)
+        Deposit a sample (already gripped) into the test cell at the insert position.
 
-    def return_from_test_cell(
-        self,
-        test_cell_xyz: tuple[float, float, float],
-        to_xyz: tuple[float, float, float],
-        to_place_z: Optional[float] = None,
-    ) -> None:
+        Sequence:
+          1. goto(insert_counts)  — move to test cell insertion depth
+          2. open_gripper()       — release sample; piston will clamp it next
+          3. raise_to_safe()      — withdraw to safe Z
+
+        Call pump_ctrl.engage_piston() AFTER this method returns.
+
+        Args:
+            insert_counts: Encoder counts for the insertion position
+                           (e.g. SAMPLE_INSERT_POS from legacy locator.py).
         """
-        Pick a sample from the test cell and return it to to_xyz.
+        logger.info("Lowering sample into test cell (counts=%s)", insert_counts)
+        self.goto(insert_counts)
+        self.open_gripper()
+        self.raise_to_safe()
+        self.home_after_move()
+
+    def retrieve_from_test_cell(self, insert_counts: list) -> None:
         """
-        self.transfer(test_cell_xyz, to_xyz, to_place_z=to_place_z)
+        Retrieve a sample from the test cell after the piston has been released.
+
+        Sequence:
+          1. goto(insert_counts)  — move to test cell insertion depth
+          2. close_gripper()      — grip sample
+          3. raise_to_safe()      — lift sample clear of test cell
+
+        Call pump_ctrl.release_piston() BEFORE this method.
+
+        Args:
+            insert_counts: Same encoder counts used in lower_into_test_cell().
+        """
+        logger.info("Retrieving sample from test cell (counts=%s)", insert_counts)
+        self.goto(insert_counts)
+        self.close_gripper()
+        self.raise_to_safe()
+        self.home_after_move()

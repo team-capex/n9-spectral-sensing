@@ -3,7 +3,7 @@ state_machine.py
 ================
 State tracking for all physical locations in the experiment workspace.
 
-Two state machines run in parallel:
+Three state machines run in parallel:
 
 1. PCB sensor slots (16 per board)
    States: EMPTY_CLEAN → DYE_FILLED → EXPERIMENT_RUNNING → EXPERIMENT_COMPLETE
@@ -12,8 +12,10 @@ Two state machines run in parallel:
 2. Sample holder slots (90 per holder, 5×18 grid)
    States: FRESH | EMPTY | USED | CLEAN
 
-Sample records track individual samples through their full lifecycle (from
-holder pick through PCB/test-cell experiments back to holder return).
+3. Legacy sample rack slots (configurable grid, one rack per experiment)
+   States: FRESH | EMPTY | USED
+
+Sample records track individual samples through their full lifecycle.
 
 All state is persisted as JSON in data/state/ so experiments survive
 multi-day process restarts. Writes are atomic (temp file + rename).
@@ -55,6 +57,13 @@ class HolderSlotState(str, Enum):
     EMPTY   = "EMPTY"   # No sample present (removed for experiment or never filled)
     USED    = "USED"    # Sample returned after experiment; may have dye contamination
     CLEAN   = "CLEAN"   # Cleaned and ready for reuse or re-loading
+
+
+class LegacyRackSlotState(str, Enum):
+    """Lifecycle states for a single slot in the legacy sample rack."""
+    FRESH   = "FRESH"   # Contains a new, unused sample
+    EMPTY   = "EMPTY"   # No sample present (removed for experiment)
+    USED    = "USED"    # Sample returned after test cell or PCB experiment
 
 
 # ── Records ───────────────────────────────────────────────────────────────────
@@ -133,6 +142,27 @@ class HolderSlotRecord:
         return self.row * 5 + self.col + 1
 
 
+@dataclass
+class LegacyRackSlotRecord:
+    """State of one slot in the legacy (large white) sample rack."""
+    rack_id: str
+    col: int
+    row: int
+    state: LegacyRackSlotState      = LegacyRackSlotState.EMPTY
+    sample_id: Optional[str]        = None
+    sample_type: Optional[str]      = None
+    last_updated: Optional[str]     = None
+
+    @property
+    def location_key(self) -> str:
+        return f"{self.rack_id}_c{self.col}_r{self.row}"
+
+    @property
+    def slot_no(self) -> int:
+        """Convert (col, row) back to 1-indexed slot number (11 cols)."""
+        return self.row * 11 + self.col + 1
+
+
 # ── Main state container ──────────────────────────────────────────────────────
 
 @dataclass
@@ -142,24 +172,28 @@ class ExperimentState:
 
     Persists to/from JSON so that process restarts mid-experiment are safe.
 
-    Keys for the three dicts:
-        pcb_sensors  : "{pcb_id}_c{col}_r{row}"   e.g. "pcb-1_c0_r3"
-        holder_slots : "{holder_id}_c{col}_r{row}" e.g. "holder-1_c2_r7"
-        samples      : sample_id string            e.g. "holder-1_c02_r05"
+    Keys for the dicts:
+        pcb_sensors      : "{pcb_id}_c{col}_r{row}"   e.g. "sensing-station-1_c0_r3"
+        holder_slots     : "{holder_id}_c{col}_r{row}" e.g. "holder-1_c2_r7"
+        legacy_rack_slots: "{rack_id}_c{col}_r{row}"  e.g. "legacy-rack-1_c0_r0"
+        samples          : sample_id string            e.g. "PC-001"
     """
 
     experiment_id: str
     created_at: str
-    pcb_sensors: dict[str, PCBSensorRecord]  = field(default_factory=dict)
-    holder_slots: dict[str, HolderSlotRecord] = field(default_factory=dict)
-    samples: dict[str, SampleRecord]          = field(default_factory=dict)
-    scan_count: int                            = 0
-    completed: bool                            = False
+    pcb_sensors: dict[str, PCBSensorRecord]         = field(default_factory=dict)
+    holder_slots: dict[str, HolderSlotRecord]        = field(default_factory=dict)
+    legacy_rack_slots: dict[str, LegacyRackSlotRecord] = field(default_factory=dict)
+    samples: dict[str, SampleRecord]                 = field(default_factory=dict)
+    scan_count: int                                  = 0
+    completed: bool                                  = False
 
     def __post_init__(self) -> None:
         # Runtime reverse index: sample_id → holder slot key (not persisted).
-        # Populated by _load_holder_init() and _state_from_dict(); updated on transitions.
+        # Populated by _load_holder_init(), _load_rack_init(), and _state_from_dict().
         self._sample_to_holder: dict[str, str] = {}
+        # Runtime reverse index: sample_id → legacy rack slot key (not persisted).
+        self._sample_to_rack: dict[str, str] = {}
 
     # ── Factory ──────────────────────────────────────────────────────────────
 
@@ -169,21 +203,23 @@ class ExperimentState:
         experiment_id: str,
         pcb_layouts: "list[PCBBoardLayout]",
         holder_layouts: "list[SampleHolderLayout]",
+        rack_layouts: "list[LegacySampleRackLayout] | None" = None,
         holder_state_path: Optional[str] = None,
+        rack_state_path: Optional[str] = None,
     ) -> "ExperimentState":
         """
         Create a fresh ExperimentState.
 
         All PCB sensor slots start as EMPTY_CLEAN.
-        Holder slots are seeded from holder_state_path (JSON) if provided;
-        otherwise all slots default to EMPTY.
+        Holder and legacy rack slots are seeded from their respective JSON
+        init files (if provided); otherwise slots default to EMPTY.
 
-        holder_state_path JSON format:
+        holder_state_path / rack_state_path JSON format:
         {
-          "holder-1": [
+          "<holder_or_rack_id>": [
             {"col": 0, "row": 0, "state": "FRESH",
-             "sample_type": "nickel_100ppm",
-             "sample_id": "holder-1_c0_r0"},
+             "sample_type": "PC",
+             "sample_id": "PC-001"},
             ...
           ]
         }
@@ -207,9 +243,20 @@ class ExperimentState:
                     rec = HolderSlotRecord(holder_id=layout.holder_id, col=col, row=row)
                     state.holder_slots[rec.location_key] = rec
 
+        # Initialise all legacy rack slots (default EMPTY)
+        for layout in (rack_layouts or []):
+            for row in range(layout.n_rows):
+                for col in range(layout.n_cols):
+                    rec = LegacyRackSlotRecord(rack_id=layout.rack_id, col=col, row=row)
+                    state.legacy_rack_slots[rec.location_key] = rec
+
         # Seed holder slots from JSON init file
         if holder_state_path:
             state._load_holder_init(holder_state_path)
+
+        # Seed legacy rack slots from JSON init file
+        if rack_state_path:
+            state._load_rack_init(rack_state_path)
 
         return state
 
@@ -250,6 +297,47 @@ class ExperimentState:
                             sample_type=sample_type,
                             dye_type="",            # assigned later at dispense step
                             holder_id=holder_id,
+                            holder_col=col,
+                            holder_row=row,
+                        )
+
+    def _load_rack_init(self, path: str) -> None:
+        """Seed legacy rack slot states from the user-provided legacy_rack_state.json."""
+        with open(path, encoding="utf-8") as f:
+            data: dict[str, list[dict]] = json.load(f)
+
+        for rack_id, slots in data.items():
+            if not isinstance(slots, list):
+                continue
+            for s in slots:
+                if not isinstance(s, dict) or "col" not in s or "row" not in s:
+                    logger.warning("legacy_rack_state.json: skipping invalid entry: %s", s)
+                    continue
+                col = int(s["col"])
+                row = int(s["row"])
+                key = f"{rack_id}_c{col}_r{row}"
+                if key not in self.legacy_rack_slots:
+                    logger.warning("legacy_rack_state.json references unknown slot %s — skipping", key)
+                    continue
+                rec = self.legacy_rack_slots[key]
+                rec.state = LegacyRackSlotState(s.get("state", "FRESH"))
+                rec.sample_type = s.get("sample_type")
+                rec.sample_id = s.get("sample_id")
+                rec.last_updated = _now()
+
+                # Update reverse index
+                if rec.sample_id:
+                    self._sample_to_rack[rec.sample_id] = key
+
+                # Register a SampleRecord for FRESH slots
+                if rec.state == LegacyRackSlotState.FRESH and rec.sample_id:
+                    sample_type = rec.sample_type or "unknown"
+                    if rec.sample_id not in self.samples:
+                        self.samples[rec.sample_id] = SampleRecord(
+                            sample_id=rec.sample_id,
+                            sample_type=sample_type,
+                            dye_type="",
+                            holder_id=rack_id,   # rack_id stored in holder_id for legacy samples
                             holder_col=col,
                             holder_row=row,
                         )
@@ -310,6 +398,42 @@ class ExperimentState:
         return [
             r for r in self.pcb_sensors.values()
             if r.state == PCBSensorState.EXPERIMENT_COMPLETE
+        ]
+
+    def get_fresh_rack_slots(
+        self,
+        rack_id: str,
+        sample_type: str,
+        n: int,
+    ) -> list[LegacyRackSlotRecord]:
+        """
+        Return up to n FRESH legacy rack slots of the requested sample_type.
+        Raises ValueError if fewer than n are available.
+        """
+        matches = [
+            r for r in self.legacy_rack_slots.values()
+            if r.rack_id == rack_id
+            and r.state == LegacyRackSlotState.FRESH
+            and r.sample_type == sample_type
+        ]
+        if len(matches) < n:
+            raise ValueError(
+                f"Not enough fresh '{sample_type}' samples in rack '{rack_id}': "
+                f"requested {n}, available {len(matches)}."
+            )
+        return matches[:n]
+
+    def get_all_fresh_rack_slots(
+        self,
+        rack_id: str,
+        sample_type: str,
+    ) -> list[LegacyRackSlotRecord]:
+        """Return all FRESH legacy rack slots of the requested type."""
+        return [
+            r for r in self.legacy_rack_slots.values()
+            if r.rack_id == rack_id
+            and r.state == LegacyRackSlotState.FRESH
+            and r.sample_type == sample_type
         ]
 
     def get_labels_for_scan(self, pcb_id: str) -> dict[int, dict]:
@@ -499,6 +623,88 @@ class ExperimentState:
             raise KeyError(f"Sample '{sample_id}' not found.")
         sample.in_test_cell = in_test_cell
 
+    def transfer_rack_slot_to_pcb(
+        self,
+        rack_id: str,
+        rack_col: int,
+        rack_row: int,
+        pcb_id: str,
+        pcb_col: int,
+        pcb_row: int,
+        dye_type: str = "",
+    ) -> None:
+        """
+        Record that a sample has been moved from a legacy rack slot to a PCB
+        sensor well (dye already in well — no dispense step needed).
+        Transitions rack slot → EMPTY, PCB slot EMPTY_CLEAN → EXPERIMENT_RUNNING.
+        """
+        rack_key = f"{rack_id}_c{rack_col}_r{rack_row}"
+        pcb_key  = f"{pcb_id}_c{pcb_col}_r{pcb_row}"
+
+        rack_rec = self.legacy_rack_slots.get(rack_key)
+        if rack_rec is None:
+            raise KeyError(f"Legacy rack slot '{rack_key}' not found in state.")
+
+        pcb_rec = self._get_pcb(pcb_key)
+        if pcb_rec.state != PCBSensorState.EMPTY_CLEAN:
+            raise ValueError(
+                f"Cannot load to PCB: slot {pcb_key} is in state "
+                f"'{pcb_rec.state.value}' (expected EMPTY_CLEAN)."
+            )
+
+        sample_id = rack_rec.sample_id
+        if sample_id is None:
+            raise ValueError(f"Rack slot {rack_key} has no sample_id.")
+
+        # Transition rack slot → EMPTY
+        rack_rec.state = LegacyRackSlotState.EMPTY
+        rack_rec.sample_id = None
+        rack_rec.last_updated = _now()
+        self._sample_to_rack.pop(sample_id, None)
+
+        # Transition PCB slot → EXPERIMENT_RUNNING (dye pre-filled manually)
+        pcb_rec.state = PCBSensorState.EXPERIMENT_RUNNING
+        pcb_rec.current_sample_id = sample_id
+        pcb_rec.last_updated = _now()
+
+        # Update sample record
+        sample = self.samples.get(sample_id)
+        if sample:
+            sample.dye_type = dye_type
+            sample.pcb_id = pcb_id
+            sample.pcb_col = pcb_col
+            sample.pcb_row = pcb_row
+            sample.placed_at = _now()
+            sample.scan_started_at = _now()
+
+    def return_sample_from_test_cell_to_rack(
+        self,
+        sample_id: str,
+        rack_id: str,
+        col: int,
+        row: int,
+    ) -> None:
+        """
+        Record that a sample has been returned from the test cell to its
+        original legacy rack slot. Transitions rack slot → USED.
+        """
+        rack_key = f"{rack_id}_c{col}_r{row}"
+        rack_rec = self.legacy_rack_slots.get(rack_key)
+        if rack_rec is None:
+            raise KeyError(f"Legacy rack slot '{rack_key}' not found in state.")
+
+        sample = self.samples.get(sample_id)
+
+        rack_rec.state = LegacyRackSlotState.USED
+        rack_rec.sample_id = sample_id
+        rack_rec.sample_type = sample.sample_type if sample else None
+        rack_rec.last_updated = _now()
+        self._sample_to_rack[sample_id] = rack_key
+
+        if sample:
+            sample.returned_at = _now()
+            sample.in_test_cell = False
+
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def save(self, state_dir: str) -> None:
@@ -574,6 +780,15 @@ class ExperimentState:
             )
         return self.holder_slots[key]
 
+    def _find_rack_slot_for_sample(self, sample_id: str) -> LegacyRackSlotRecord:
+        key = self._sample_to_rack.get(sample_id)
+        if key is None:
+            raise KeyError(
+                f"No legacy rack slot found for sample '{sample_id}'. "
+                f"Has it already been removed?"
+            )
+        return self.legacy_rack_slots[key]
+
 
 # ── Serialisation helpers (private) ──────────────────────────────────────────
 
@@ -594,6 +809,10 @@ def _state_to_dict(state: ExperimentState) -> dict:
         "holder_slots": {
             k: {**asdict(v), "state": v.state.value}
             for k, v in state.holder_slots.items()
+        },
+        "legacy_rack_slots": {
+            k: {**asdict(v), "state": v.state.value}
+            for k, v in state.legacy_rack_slots.items()
         },
         "samples": {k: asdict(v) for k, v in state.samples.items()},
     }
@@ -625,6 +844,19 @@ def _state_from_dict(data: dict) -> ExperimentState:
         for k, v in data.get("holder_slots", {}).items()
     }
 
+    legacy_rack_slots = {
+        k: LegacyRackSlotRecord(
+            rack_id=v["rack_id"],
+            col=v["col"],
+            row=v["row"],
+            state=LegacyRackSlotState(v["state"]),
+            sample_id=v.get("sample_id"),
+            sample_type=v.get("sample_type"),
+            last_updated=v.get("last_updated"),
+        )
+        for k, v in data.get("legacy_rack_slots", {}).items()
+    }
+
     samples = {
         k: SampleRecord(**v)
         for k, v in data.get("samples", {}).items()
@@ -635,14 +867,20 @@ def _state_from_dict(data: dict) -> ExperimentState:
         created_at=data["created_at"],
         pcb_sensors=pcb_sensors,
         holder_slots=holder_slots,
+        legacy_rack_slots=legacy_rack_slots,
         samples=samples,
         scan_count=data.get("scan_count", 0),
         completed=data.get("completed", False),
     )
-    # Rebuild the runtime reverse index from persisted holder_slots
+    # Rebuild the runtime reverse indices from persisted slots
     state._sample_to_holder = {
         rec.sample_id: key
         for key, rec in state.holder_slots.items()
+        if rec.sample_id is not None
+    }
+    state._sample_to_rack = {
+        rec.sample_id: key
+        for key, rec in state.legacy_rack_slots.items()
         if rec.sample_id is not None
     }
     return state

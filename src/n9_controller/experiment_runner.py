@@ -31,11 +31,14 @@ import yaml
 from n9_controller.coordinate_map import CoordinateMap
 from n9_controller.dispenser import LiquidDispenser
 from n9_controller.experiment_config import ExperimentConfig, load_experiment
+from n9_controller.pump_controller import PumpController
 from n9_controller.robot import N9RobotController
 from n9_controller.state_machine import (
     ExperimentState,
     HolderSlotState,
+    LegacyRackSlotState,
     PCBSensorState,
+    LegacyRackSlotRecord,
 )
 from spectral_board_manager.board_manager import BoardManager
 
@@ -99,6 +102,15 @@ class ExperimentRunner:
 
         self.coord_map = CoordinateMap.from_config(self._raw_cfg)
 
+        # Pump controller (peristaltic pumps + digital outputs for test cell)
+        robot_hw = None if robot_cfg.get("simulate", True) else getattr(self.robot, "_robot", None)
+        self.pump_ctrl = PumpController(
+            simulate=bool(robot_cfg.get("simulate", True)),
+            robot=robot_hw,
+            pump_cfg=self._raw_cfg.get("peristaltic_pumps", {}),
+            test_cell_cfg=self._raw_cfg.get("test_cell", {}),
+        )
+
         # Spectral board manager (uses the same config.yaml)
         self.board_manager = BoardManager(config_path)
         self.board_manager.experiment_id = self.exp_cfg.experiment_id
@@ -113,6 +125,11 @@ class ExperimentRunner:
         holder_state_path = (
             self.exp_cfg.holder_state_path
             if os.path.exists(self.exp_cfg.holder_state_path)
+            else None
+        )
+        rack_state_path = (
+            self.exp_cfg.legacy_rack_state_path
+            if os.path.exists(self.exp_cfg.legacy_rack_state_path)
             else None
         )
 
@@ -131,7 +148,12 @@ class ExperimentRunner:
                     self.coord_map.holder_layout(hid)
                     for hid in self.exp_cfg.sample_holders
                 ],
+                rack_layouts=[
+                    self.coord_map.rack_layout(rid)
+                    for rid in self.exp_cfg.legacy_racks
+                ],
                 holder_state_path=holder_state_path,
+                rack_state_path=rack_state_path,
             )
             self.state.save(self._state_dir)
 
@@ -248,6 +270,155 @@ class ExperimentRunner:
         # Transition all loaded slots to EXPERIMENT_RUNNING
         self.state.start_all_loaded_experiments()
 
+    def load_from_legacy_rack_to_pcb(self) -> None:
+        """
+        Move samples from the legacy sample rack to free PCB sensor slots.
+
+        For each SampleSpec with source pointing to a legacy rack and destination "pcb":
+          - Find FRESH rack slots of the requested type
+          - Pick each sample from the rack and place on a free PCB sensor slot
+          - Transition rack slot → EMPTY, PCB slot → EXPERIMENT_RUNNING
+            (dye is assumed to be pre-filled manually in the PCB wells)
+        """
+        for spec in self.exp_cfg.samples:
+            if spec.destination != "pcb":
+                continue
+            # Check if source is a known legacy rack
+            if spec.source not in self.exp_cfg.legacy_racks:
+                continue
+
+            rack_id = spec.source
+            logger.info(
+                "Loading %d × '%s' from legacy rack '%s' to PCB",
+                spec.count, spec.sample_type, rack_id,
+            )
+
+            rack_slots = self.state.get_fresh_rack_slots(rack_id, spec.sample_type, spec.count)
+            free_pcb_slots = self.state.get_free_pcb_locations()
+
+            if len(free_pcb_slots) < spec.count:
+                raise RuntimeError(
+                    f"Not enough free PCB slots: need {spec.count}, "
+                    f"only {len(free_pcb_slots)} available."
+                )
+
+            for rack_slot, pcb_slot in zip(rack_slots, free_pcb_slots[:spec.count]):
+                sample_id = rack_slot.sample_id
+                if sample_id is None:
+                    raise RuntimeError(
+                        f"Rack slot {rack_slot.location_key} has no sample_id. "
+                        f"Check legacy_rack_state.json."
+                    )
+
+                from_xyz = self.coord_map.legacy_rack_slot_xyz(
+                    rack_slot.rack_id, rack_slot.col, rack_slot.row
+                )
+                to_xyz = self.coord_map.pcb_sensor_xyz(
+                    pcb_slot.pcb_id, pcb_slot.col, pcb_slot.row
+                )
+
+                logger.info(
+                    "  %s: rack %s → PCB %s",
+                    sample_id, rack_slot.location_key, pcb_slot.location_key,
+                )
+                self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
+                self.robot.place_at(to_xyz[0], to_xyz[1], to_xyz[2])
+
+                self.state.transfer_rack_slot_to_pcb(
+                    rack_id=rack_slot.rack_id,
+                    rack_col=rack_slot.col,
+                    rack_row=rack_slot.row,
+                    pcb_id=pcb_slot.pcb_id,
+                    pcb_col=pcb_slot.col,
+                    pcb_row=pcb_slot.row,
+                    dye_type=spec.dye_type,
+                )
+                self.state.save(self._state_dir)
+
+    def run_ni_test_cell_loop(self) -> None:
+        """
+        Loop each Ni strip from the legacy rack through the test cell:
+
+          For each FRESH Ni sample in the rack:
+            1. Pick from legacy rack
+            2. Lower into test cell (deposit)
+            3. Engage hydraulic piston
+            4. Fill test cell with H2O (or configured fill_pump)
+            5. Wait wait_time_s seconds
+            6. Drain test cell
+            7. Release piston
+            8. Retrieve sample from test cell
+            9. Return to original rack slot
+        """
+        demo_cfg = self.exp_cfg.test_cell_demo
+        if demo_cfg is None:
+            logger.info("No test_cell_demo config found — skipping run_ni_test_cell_loop.")
+            return
+
+        tc = self.coord_map.test_cell
+
+        # Collect Ni sample specs pointing to test_cell destination
+        ni_racks = [
+            spec for spec in self.exp_cfg.samples
+            if spec.destination == "test_cell"
+            and spec.source in self.exp_cfg.legacy_racks
+        ]
+
+        for spec in ni_racks:
+            rack_id = spec.source
+            candidates = self.state.get_all_fresh_rack_slots(rack_id, spec.sample_type)
+            logger.info(
+                "Test cell loop: %d × '%s' from rack '%s'",
+                len(candidates), spec.sample_type, rack_id,
+            )
+
+            for rack_slot in candidates:
+                sample_id = rack_slot.sample_id
+                if sample_id is None:
+                    continue
+
+                from_xyz = self.coord_map.legacy_rack_slot_xyz(
+                    rack_slot.rack_id, rack_slot.col, rack_slot.row
+                )
+
+                logger.info("  %s → test cell", sample_id)
+
+                # 1. Pick from rack
+                self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
+
+                # 2. Deposit in test cell (robot lowers, opens gripper, raises)
+                self.robot.lower_into_test_cell(tc.insert_counts)
+
+                # 3. Engage piston
+                self.pump_ctrl.engage_piston()
+                self.state.set_sample_in_test_cell(sample_id, True)
+                self.state.save(self._state_dir)
+
+                # 4. Fill test cell
+                self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
+
+                # 5. Wait
+                logger.info("  Holding for %.0f s ...", demo_cfg.wait_time_s)
+                time.sleep(demo_cfg.wait_time_s)
+
+                # 6. Drain
+                self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
+
+                # 7. Release piston
+                self.pump_ctrl.release_piston()
+
+                # 8. Retrieve sample
+                self.robot.retrieve_from_test_cell(tc.insert_counts)
+
+                # 9. Return to rack slot
+                self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])
+
+                self.state.return_sample_from_test_cell_to_rack(
+                    sample_id, rack_slot.rack_id, rack_slot.col, rack_slot.row
+                )
+                self.state.save(self._state_dir)
+                logger.info("  %s returned to rack %s", sample_id, rack_slot.location_key)
+
     def start_colour_scanning(self) -> None:
         """
         Launch a background thread that periodically runs BoardManager.run()
@@ -259,8 +430,9 @@ class ExperimentRunner:
             logger.warning("Colour scanning thread already running — not starting a second one.")
             return
 
-        # Block until all boards have reached their target temperature (no-op if null)
-        self.board_manager.wait_for_temperature()
+        # Optionally wait for boards to reach target temperature
+        if self.exp_cfg.scanning.temperature_control:
+            self.board_manager.wait_for_temperature()
 
         self._scan_stop_event = threading.Event()
         self._scan_thread = threading.Thread(
@@ -278,19 +450,24 @@ class ExperimentRunner:
 
     def wait_for_colour_scanning(self) -> None:
         """
-        Block until the colour scanning duration has elapsed, then stop the
-        background thread and mark all running experiments as complete.
+        Block until the colour scanning duration has elapsed (or indefinitely if
+        total_duration_hours==0), then stop the background thread and mark all
+        running experiments as complete.
         """
         if self._scan_thread is None:
             logger.warning("wait_for_colour_scanning called but no scan thread is running.")
             return
 
         duration_s = self.exp_cfg.scanning.total_duration_hours * 3600.0
-        logger.info(
-            "Waiting %.1f hours for colour experiments to complete ...",
-            self.exp_cfg.scanning.total_duration_hours,
-        )
-        self._scan_thread.join(timeout=duration_s)
+        if duration_s <= 0.0:
+            logger.info("Colour scanning will run until manually stopped (duration=0). Joining thread ...")
+            self._scan_thread.join()   # block until stop_event is set or thread exits
+        else:
+            logger.info(
+                "Waiting %.1f hours for colour experiments to complete ...",
+                self.exp_cfg.scanning.total_duration_hours,
+            )
+            self._scan_thread.join(timeout=duration_s)
 
         # Stop the background thread
         if self._scan_stop_event:
@@ -421,13 +598,13 @@ class ExperimentRunner:
     def return_all_to_holder(self) -> None:
         """
         Return all remaining PCB samples (EXPERIMENT_COMPLETE or EXPERIMENT_RUNNING)
-        directly to their holder slots, without passing through the test cell.
+        directly to their origin (holder slot or legacy rack slot).
         """
         complete = (
             self.state.get_complete_experiments()
             + self.state.get_running_experiments()
         )
-        logger.info("Returning %d samples to holder ...", len(complete))
+        logger.info("Returning %d samples to origin ...", len(complete))
 
         for pcb_rec in complete:
             sample_id = pcb_rec.current_sample_id
@@ -438,19 +615,34 @@ class ExperimentRunner:
                 continue
 
             pcb_xyz = self.coord_map.pcb_sensor_xyz(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
-            holder_xyz = self.coord_map.holder_slot_xyz(
-                sample.holder_id, sample.holder_col, sample.holder_row
-            )
 
-            logger.info("  %s: PCB %s → holder", sample_id, pcb_rec.location_key)
-            self.robot.transfer(pcb_xyz, holder_xyz)
-            self.state.remove_sample_from_pcb(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
-            self.state.return_sample_to_holder(
-                sample_id,
-                sample.holder_id,
-                sample.holder_col,
-                sample.holder_row,
-            )
+            # Determine origin: legacy rack or holder
+            origin_id = sample.holder_id
+            if origin_id in self.coord_map.rack_ids:
+                origin_xyz = self.coord_map.legacy_rack_slot_xyz(
+                    origin_id, sample.holder_col, sample.holder_row
+                )
+                logger.info("  %s: PCB %s → rack %s", sample_id, pcb_rec.location_key, origin_id)
+                self.robot.pick_from(pcb_xyz[0], pcb_xyz[1], pcb_xyz[2])
+                self.robot.place_at(origin_xyz[0], origin_xyz[1], origin_xyz[2])
+                self.state.remove_sample_from_pcb(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
+                self.state.return_sample_from_test_cell_to_rack(
+                    sample_id, origin_id, sample.holder_col, sample.holder_row
+                )
+            else:
+                origin_xyz = self.coord_map.holder_slot_xyz(
+                    origin_id, sample.holder_col, sample.holder_row
+                )
+                logger.info("  %s: PCB %s → holder %s", sample_id, pcb_rec.location_key, origin_id)
+                self.robot.transfer(pcb_xyz, origin_xyz)
+                self.state.remove_sample_from_pcb(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
+                self.state.return_sample_to_holder(
+                    sample_id,
+                    origin_id,
+                    sample.holder_col,
+                    sample.holder_row,
+                )
+
             self.state.save(self._state_dir)
 
     def report_cleaning_needed(self) -> None:
@@ -507,14 +699,17 @@ class ExperimentRunner:
         Background thread: periodically runs BoardManager.run() with labels.
 
         Runs until stop_event is set or the configured duration elapses.
+        If total_duration_hours == 0, runs until stop_event is set externally.
+        If interval_minutes == 0, scans continuously (no sleep between scans).
         """
         interval_s = self.exp_cfg.scanning.interval_minutes * 60.0
         duration_s = self.exp_cfg.scanning.total_duration_hours * 3600.0
+        run_forever = duration_s <= 0.0
         started_at = time.monotonic()
 
         while not stop_event.is_set():
             elapsed = time.monotonic() - started_at
-            if elapsed >= duration_s:
+            if not run_forever and elapsed >= duration_s:
                 logger.info("Colour scan duration reached (%.1f h). Stopping scan loop.", elapsed / 3600)
                 break
 
@@ -539,9 +734,11 @@ class ExperimentRunner:
             except Exception as exc:
                 logger.error("Scan #%d failed: %s", self.state.scan_count + 1, exc)
 
-            # Wait for next scan interval minus time already spent scanning (drift fix)
-            scan_duration = time.monotonic() - scan_start
-            stop_event.wait(timeout=max(0.0, interval_s - scan_duration))
+            # Wait for next scan interval minus time already spent scanning (drift fix).
+            # interval_s=0 means continuous — no sleep between scans.
+            if interval_s > 0:
+                scan_duration = time.monotonic() - scan_start
+                stop_event.wait(timeout=max(0.0, interval_s - scan_duration))
 
     # ── Test cell protocol placeholder ─────────────────────────────────────────
 
@@ -571,15 +768,17 @@ class ExperimentRunner:
 # ── Step dispatch table ───────────────────────────────────────────────────────
 
 ExperimentRunner.STEP_MAP = {
-    "home_robot":               ExperimentRunner.home_robot,
-    "load_samples_to_pcb":      ExperimentRunner.load_samples_to_pcb,
-    "dispense_dye_to_pcb":      ExperimentRunner.dispense_dye_to_pcb,
-    "start_colour_scanning":    ExperimentRunner.start_colour_scanning,
-    "run_test_cell_experiments": ExperimentRunner.run_test_cell_experiments,
-    "wait_for_colour_scanning": ExperimentRunner.wait_for_colour_scanning,
-    "post_colour_test_cell":    ExperimentRunner.post_colour_test_cell,
-    "return_all_to_holder":     ExperimentRunner.return_all_to_holder,
-    "report_cleaning_needed":   ExperimentRunner.report_cleaning_needed,
+    "home_robot":                    ExperimentRunner.home_robot,
+    "load_samples_to_pcb":           ExperimentRunner.load_samples_to_pcb,
+    "load_from_legacy_rack_to_pcb":  ExperimentRunner.load_from_legacy_rack_to_pcb,
+    "dispense_dye_to_pcb":           ExperimentRunner.dispense_dye_to_pcb,
+    "start_colour_scanning":         ExperimentRunner.start_colour_scanning,
+    "run_test_cell_experiments":      ExperimentRunner.run_test_cell_experiments,
+    "run_ni_test_cell_loop":          ExperimentRunner.run_ni_test_cell_loop,
+    "wait_for_colour_scanning":      ExperimentRunner.wait_for_colour_scanning,
+    "post_colour_test_cell":         ExperimentRunner.post_colour_test_cell,
+    "return_all_to_holder":          ExperimentRunner.return_all_to_holder,
+    "report_cleaning_needed":        ExperimentRunner.report_cleaning_needed,
 }
 
 

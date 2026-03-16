@@ -2,7 +2,8 @@
 coordinate_map.py
 =================
 Pure coordinate math: converts grid (col, row) indices for PCB sensor wells,
-sample holder slots, and the test cell into absolute robot workspace XYZ (mm).
+sample holder slots, legacy sample rack slots, and the test cell into absolute
+robot workspace XYZ (mm).
 
 No hardware calls, no side effects — safe to unit-test in isolation.
 
@@ -14,6 +15,15 @@ PCB sensor grid layout (2 cols × 8 rows = 16 sensors):
 
 Sample holder grid layout (5 cols × 18 rows = 90 slots, 1-indexed):
     Formula: col = (slot_no - 1) % n_cols,  row = (slot_no - 1) // n_cols
+
+Legacy sample rack grid layout (11 cols × 8 rows, configurable origin):
+    col_spacing_mm is signed: legacy rack uses -25.5 (X decreases with col).
+    row_spacing_mm is signed: legacy rack uses +15.5 (Y increases with row).
+    Absolute position = origin_xyz + (col * col_spacing_mm, row * row_spacing_mm, 0).
+
+Test cell:
+    Robot positions are stored as encoder counts [gripper, elbow, shoulder, z_axis]
+    and dispatched via robot.goto() for precise kinematic positioning.
 """
 
 from __future__ import annotations
@@ -49,10 +59,46 @@ class SampleHolderLayout:
 
 
 @dataclass(frozen=True)
+class LegacySampleRackLayout:
+    """
+    Configurable grid layout for the legacy (large) white sample rack.
+
+    The rack origin can be moved without changing code — only origin_xyz
+    needs updating in config.yaml.
+
+    col_spacing_mm is signed: use negative to indicate X decreases with
+    increasing col (legacy rack: -25.5 mm).
+    row_spacing_mm is signed: use positive for Y increases with row
+    (legacy rack: +15.5 mm).
+    """
+    rack_id: str
+    origin_xyz: XYZ             # robot coords (mm) of slot (col=0, row=0)
+    col_spacing_mm: float       # signed; legacy = -25.5 (X decreases with col)
+    row_spacing_mm: float       # signed; legacy = +15.5 (Y increases with row)
+    n_cols: int                 # legacy = 11
+    n_rows: int                 # legacy = 8
+    pick_z_mm: float            # legacy = 44.0 (fixed height for all slots)
+
+
+@dataclass(frozen=True)
 class TestCellLayout:
-    position_xyz: XYZ           # robot coords (mm) of the test cell centre
-    pick_z_mm: float            # Z to descend to for pick/place
-    safe_z_mm: float            # Z clearance during approach
+    """
+    Test cell configuration.
+
+    Robot positions are encoder counts [gripper, elbow, shoulder, z_axis]
+    dispatched via robot.goto() for precise kinematic positioning.
+
+    Legacy positions (from locator.py):
+        insert_counts = [-1159, 33780, 4481, 10840]  # SAMPLE_INSERT_POS
+        test_counts   = [-1131, 33714, 4517, 14440]  # SAMPLE_TEST_POS
+    """
+    insert_counts: list         # encoder counts for sample insertion depth
+    test_counts: list           # encoder counts for test/approach position
+    safe_travel_z_mm: float     # Z (mm) to raise to before/after test cell moves
+    piston_output_index: int    # digital output index for hydraulic piston
+    drain_output_index: int     # digital output index for drain valve
+    fill_pump: str              # peristaltic pump name for filling (e.g. "H2O_ECELL")
+    fill_volume_ml: float       # volume to fill the test cell (mL)
 
 
 # ── CoordinateMap ─────────────────────────────────────────────────────────────
@@ -71,9 +117,13 @@ class CoordinateMap:
         pcb_layouts: list[PCBBoardLayout],
         holder_layouts: list[SampleHolderLayout],
         test_cell: TestCellLayout,
+        rack_layouts: list[LegacySampleRackLayout] | None = None,
     ) -> None:
         self._pcbs: dict[str, PCBBoardLayout] = {p.pcb_id: p for p in pcb_layouts}
         self._holders: dict[str, SampleHolderLayout] = {h.holder_id: h for h in holder_layouts}
+        self._racks: dict[str, LegacySampleRackLayout] = {
+            r.rack_id: r for r in (rack_layouts or [])
+        }
         self._test_cell = test_cell
 
     # ── PCB ───────────────────────────────────────────────────────────────────
@@ -110,19 +160,47 @@ class CoordinateMap:
             layout.pick_z_mm,
         )
 
+    # ── Legacy sample rack ────────────────────────────────────────────────────
+
+    def legacy_rack_slot_xyz(self, rack_id: str, col: int, row: int) -> XYZ:
+        """
+        XYZ for a slot in the legacy sample rack, z = pick_z_mm.
+
+        Absolute position = origin_xyz + (col * col_spacing_mm, row * row_spacing_mm, 0).
+        col_spacing_mm is signed (negative for legacy rack where X decreases with col).
+        """
+        layout = self._get_rack(rack_id)
+        ox, oy, _ = layout.origin_xyz
+        return (
+            ox + col * layout.col_spacing_mm,
+            oy + row * layout.row_spacing_mm,
+            layout.pick_z_mm,
+        )
+
+    @staticmethod
+    def legacy_rack_slot_to_col_row(slot_no: int, n_cols: int = 11) -> tuple[int, int]:
+        """
+        Convert 1-indexed slot number to (col, row) in the legacy rack grid.
+
+        Returns (col, row).
+        """
+        if slot_no < 1:
+            raise ValueError(f"slot_no must be >= 1, got {slot_no}")
+        col = (slot_no - 1) % n_cols
+        row = (slot_no - 1) // n_cols
+        return col, row
+
+    @staticmethod
+    def col_row_to_legacy_rack_slot(col: int, row: int, n_cols: int = 11) -> int:
+        """Inverse of legacy_rack_slot_to_col_row. Returns 1-indexed slot number."""
+        return row * n_cols + col + 1
+
     # ── Test cell ─────────────────────────────────────────────────────────────
 
-    def test_cell_xyz(self) -> XYZ:
-        """XYZ of the test cell, z = pick_z_mm."""
-        tc = self._test_cell
-        x, y, _ = tc.position_xyz
-        return (x, y, tc.pick_z_mm)
-
-    def test_cell_safe_xyz(self) -> XYZ:
-        """XYZ of the test cell, z = safe_z_mm (for safe approach)."""
-        tc = self._test_cell
-        x, y, _ = tc.position_xyz
-        return (x, y, tc.safe_z_mm)
+    @property
+    def test_cell(self) -> TestCellLayout:
+        """Direct access to the TestCellLayout (for encoder-count robot moves)."""
+        return self._test_cell
 
     # ── Index helpers (static) ────────────────────────────────────────────────
 
@@ -184,6 +262,13 @@ class CoordinateMap:
             raise KeyError(f"Sample holder '{holder_id}' not found. "
                            f"Available: {list(self._holders)}")
 
+    def _get_rack(self, rack_id: str) -> LegacySampleRackLayout:
+        try:
+            return self._racks[rack_id]
+        except KeyError:
+            raise KeyError(f"Legacy sample rack '{rack_id}' not found. "
+                           f"Available: {list(self._racks)}")
+
     # ── Factory from config dict ──────────────────────────────────────────────
 
     @classmethod
@@ -221,12 +306,29 @@ class CoordinateMap:
 
         tc = cfg["test_cell"]
         test_cell = TestCellLayout(
-            position_xyz=tuple(tc["position_xyz"]),       # type: ignore[arg-type]
-            pick_z_mm=float(tc["pick_z_mm"]),
-            safe_z_mm=float(tc["safe_z_mm"]),
+            insert_counts=list(tc["insert_counts"]),
+            test_counts=list(tc["test_counts"]),
+            safe_travel_z_mm=float(tc.get("safe_travel_z_mm", 292.0)),
+            piston_output_index=int(tc.get("piston_output_index", 2)),
+            drain_output_index=int(tc.get("drain_output_index", 3)),
+            fill_pump=str(tc.get("fill_pump", "H2O_ECELL")),
+            fill_volume_ml=float(tc.get("fill_volume_ml", 11.5)),
         )
 
-        return cls(pcb_layouts, holder_layouts, test_cell)
+        rack_layouts = [
+            LegacySampleRackLayout(
+                rack_id=r["rack_id"],
+                origin_xyz=tuple(r["origin_xyz"]),        # type: ignore[arg-type]
+                col_spacing_mm=float(r["col_spacing_mm"]),
+                row_spacing_mm=float(r["row_spacing_mm"]),
+                n_cols=int(r["n_cols"]),
+                n_rows=int(r["n_rows"]),
+                pick_z_mm=float(r["pick_z_mm"]),
+            )
+            for r in cfg.get("legacy_sample_racks", [])
+        ]
+
+        return cls(pcb_layouts, holder_layouts, test_cell, rack_layouts)
 
     # ── Properties ────────────────────────────────────────────────────────────
 
@@ -243,3 +345,10 @@ class CoordinateMap:
 
     def holder_layout(self, holder_id: str) -> SampleHolderLayout:
         return self._get_holder(holder_id)
+
+    @property
+    def rack_ids(self) -> list[str]:
+        return list(self._racks)
+
+    def rack_layout(self, rack_id: str) -> LegacySampleRackLayout:
+        return self._get_rack(rack_id)

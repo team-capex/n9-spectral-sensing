@@ -8,86 +8,90 @@
 # To resume an interrupted experiment:
 #   experiment-run --config config.yaml --experiment experiment.yaml --resume
 
-# Unique identifier for this experiment.
-# If omitted, an ISO timestamp is generated automatically.
-experiment_id: "exp-20260310-nickel-congo-red"
-description: "Nickel ion detection with Congo Red dye — 3 concentrations"
+experiment_id: "demo-20260316-pc-spectral-ni-ecell"
+description: >
+  Demo experiment.
+  Phase 1: Move 16 PC strips from the legacy sample rack into sensing-station-1
+  (PCB wells pre-filled with dye manually). Start continuous spectral measurements.
+  Phase 2 (concurrent): Cycle each Ni strip from the legacy rack through the
+  electrochemical test cell — fill with H2O, engage piston, hold 60 s, drain,
+  release piston, return to rack. Repeat for all Ni strips.
 
-# PCB board IDs to use (must match pcb_id values in config.yaml pcb_boards section).
+# PCB sensing stations to use (must match id values in config.yaml sensing_stations).
 sensing_stations:
-  - sensing_station-1
+  - sensing-station-1
 
-# Sample holder IDs to draw from (must match holder_id values in config.yaml).
-sample_holders:
-  - holder-1
+# Small white sample holders — not used in this demo (samples come from legacy rack).
+sample_holders: []
 
-# Path to the JSON file that declares the initial state of each holder slot.
-# Edit holder_state.json to match the physical samples you have loaded before
-# starting the experiment.
+# Legacy sample rack to draw PC strips and Ni strips from.
+legacy_racks:
+  - legacy-rack-1
+
+# Path to the JSON file declaring the initial legacy rack slot contents.
+# Edit before running to match the physical samples loaded in the rack.
+legacy_rack_state_path: "legacy_rack_state.json"
+
+# holder_state.json is not used in this demo (sample_holders is empty above),
+# but the field is kept for compatibility with ExperimentRunner.
 holder_state_path: "holder_state.json"
 
-# Samples to pull from the holder and load onto PCB sensor wells.
-# sample_type must match the 'sample_type' values in holder_state.json.
-# dye_type identifies the dye reagent to be dispensed over this sample group.
+# Sample groups.
+# source: legacy rack id or "holder"
+# destination: "pcb" (spectral station) or "test_cell"
 samples:
-  - sample_type: "nickel_0ppm"
-    dye_type: "congo_red"
-    count: 4                  # take 4 blank (0 ppm) reference samples
+  - sample_type: "PC"
+    count: 16
+    source: "legacy-rack-1"       # pick from legacy rack
+    destination: "pcb"            # place on spectral PCB (dye pre-filled)
+    dye_type: ""                  # dye already in wells — no dispense step
 
-  - sample_type: "nickel_50ppm"
-    dye_type: "congo_red"
-    count: 4
+  - sample_type: "Ni"
+    count: 8                      # adjust to the number of Ni strips in the rack
+    source: "legacy-rack-1"
+    destination: "test_cell"      # run through electrochemical test cell
 
-  - sample_type: "nickel_100ppm"
-    dye_type: "congo_red"
-    count: 4
-
-# Colour scanning schedule.
+# Spectral scanning schedule.
+# interval_minutes: 0  → continuous (scan as fast as possible, no sleep between scans)
+# total_duration_hours: 0 → run until the Ni test cell loop finishes, then stop
 scanning:
-  interval_minutes: 30        # time between successive full PCB board scans
-  total_duration_hours: 24.0  # total length of the colour experiment
+  interval_minutes: 0
+  total_duration_hours: 0         # stopped when wait_for_colour_scanning is reached
+  temperature_control: false      # no temperature PID for this demo
 
-# Dye dispense settings (hardware-specific parameters go in config.yaml dispenser section).
+# Dye dispense is not used here (dispense_dye_to_pcb step is not in the step list).
+# Kept for schema completeness.
 dispense:
-  volume_ul: 50.0             # volume dispensed per sensor well (microlitres)
+  volume_ul: 50.0
 
-# Optional test-cell electrochemical experiment.
-# Set enabled: false to skip all test-cell steps.
-# protocol is a placeholder identifier — implement the hardware driver in
-# experiment_runner._run_test_cell_protocol() before setting enabled: true.
+# Legacy test_cell_experiment field — not used in this demo (using run_ni_test_cell_loop instead).
 test_cell_experiment:
-  enabled: false              # set to true once test-cell hardware is implemented
-  protocol: "placeholder_CV_scan"
-  samples:
-    - sample_type: "nickel_100ppm"
-      count: 2               # run 2 high-concentration samples through test cell
+  enabled: false
+  protocol: "placeholder"
+  samples: []
+
+# Test cell demo configuration for the Ni-strip loop.
+test_cell_demo:
+  fill_pump: "H2O_ECELL"     # fill with water via the dedicated test-cell water line
+  fill_volume_ml: 11.5       # full cell volume (ECELL_VOLUME from legacy)
+  wait_time_s: 60.0          # hold time per Ni strip (seconds)
+  drain_pump: "Drain"        # drain via the Drain peristaltic pump
 
 # Ordered list of experiment steps.
-# Each action maps to a method on ExperimentRunner.
-# Remove or comment out steps you do not need for a given run.
 steps:
-  - action: home_robot                 # home robot and dispenser
+  - home_robot                   # home robot arm
 
-  - action: load_samples_to_pcb       # pick samples from holder, place on PCB wells
+  - load_from_legacy_rack_to_pcb # move 16 PC strips → sensing-station-1 (dye already in wells)
 
-  - action: dispense_dye_to_pcb       # dispense dye to each loaded PCB well
-                                      # (skipped silently if dispenser.simulate: true)
+  - start_colour_scanning        # start continuous spectral measurements in background thread
 
-  - action: start_colour_scanning     # launch background periodic scanning thread
+  - run_ni_test_cell_loop        # cycle all Ni strips through test cell (fill→piston→60s→drain→return)
 
-  # While colour scanning runs, optionally move other samples to the test cell
-  # for electrochemical experiments (enable test_cell_experiment above first).
-  - action: run_test_cell_experiments
+  - wait_for_colour_scanning     # stop scan thread (thread exits after run_ni_test_cell_loop finishes)
 
-  - action: wait_for_colour_scanning  # block until scanning.total_duration_hours elapses
+  - return_all_to_holder         # return PC strips from PCB back to legacy rack
 
-  # After colour experiments: optionally run PCB samples through test cell before return.
-  # Requires test_cell_experiment.enabled: true.
-  - action: post_colour_test_cell
-
-  - action: return_all_to_holder      # return any remaining PCB samples to holder
-
-  - action: report_cleaning_needed    # print + write cleaning report
+  - report_cleaning_needed       # write cleaning report
 
 # Output settings.
 output:
