@@ -93,6 +93,8 @@ class ExperimentRunner:
             simulate=bool(robot_cfg.get("simulate", True)),
             safe_travel_z_mm=float(robot_cfg.get("safe_travel_z_mm", 80.0)),
             device_serial=robot_cfg.get("device_serial") or None,
+            velocity=int(robot_cfg["velocity"]) if "velocity" in robot_cfg else None,
+            acceleration=int(robot_cfg["acceleration"]) if "acceleration" in robot_cfg else None,
         )
 
         dispenser_cfg = self._raw_cfg.get("dispenser", {})

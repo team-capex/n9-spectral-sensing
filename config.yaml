@@ -17,7 +17,9 @@ PCBs:
 robot:
   simulate: false                 # true = log moves only, no hardware calls
   safe_travel_z_mm: 200.0         # Z height used for all XY travel moves
-  device_serial: "FT5SJ5LG"    # bare FTDI chip serial number; null = first found
+  device_serial: "FT5SJ5LG"      # bare FTDI chip serial number; null = first found
+  # velocity: 30000               # encoder counts/s  (omit to use default 10000)
+  # acceleration: 300000          # encoder counts/s² (omit to use default 200000)
 
 # ── Liquid dispenser (hardware TBD) ───────────────────────────────────────────
 # Replace this section once dispenser hardware is defined.

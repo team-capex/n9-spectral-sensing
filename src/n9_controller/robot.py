@@ -102,6 +102,7 @@ _SHOULDER = 2
 _Z_AXIS   = 3
 
 # Counts per unit
+_GRIPPER_COUNTS_PER_REV  = 4000    # from legacy n9_kinematics.py line 8
 _ELBOW_COUNTS_PER_REV    = 51000
 _SHOULDER_COUNTS_PER_REV = 101000
 _Z_AXIS_COUNTS_PER_MM    = 100
@@ -119,6 +120,11 @@ _DEFAULT_TOOL_ORIENTATION = 0.0   # radians (= POS_Y in kinematics file)
 
 # Arm link lengths (mm)
 _L1 = _L2 = 170.0
+
+
+def _rad_to_counts_gripper(rad: float) -> int:
+    """Verbatim port of rad_to_counts(GRIPPER, rad) from n9_kinematics.py (note negation)."""
+    return -int((rad / math.tau) * _GRIPPER_COUNTS_PER_REV + 0.5)
 
 
 def _rad_to_counts_elbow(rad: float) -> int:
@@ -190,8 +196,8 @@ class _LegacyN9:
     _FREE          = 0
     _MOVE_COMPLETE = 7
 
-    _DEFAULT_VEL   = 5000
-    _DEFAULT_ACCEL = 50000
+    _DEFAULT_VEL   = 10000   # matches C9Controller default (legacy controller.py:42)
+    _DEFAULT_ACCEL = 200000  # matches C9Controller default (legacy controller.py:43)
 
     _RESP_TIMEOUT  = 0.6   # s — matches legacy TIMEOUT = 0.6
     _TAIL_TIMEOUT  = 0.2   # s — for the remainder after the length byte
@@ -221,6 +227,9 @@ class _LegacyN9:
             connect_settle_time=connect_settle_time,
             connect=True,
         )
+        # Track current Z encoder counts so XY MORO moves can hold Z steady.
+        # Updated by move_arm(z=…) and reset to 0 by _home_joints().
+        self._z_cts: int = 0
 
     # ── Wire-level send/receive ───────────────────────────────────────────────
 
@@ -282,16 +291,24 @@ class _LegacyN9:
         if len(terms) >= 2 and terms[1] == b"ERR!":
             raise RuntimeError(f"C9 reported ERR! in response to '{command}': {response!r}")
         try:
-            return [int(t) for t in terms[2:] if t]
-        except ValueError:
+            return [int(t.decode()) for t in terms[2:] if t]
+        except (ValueError, TypeError):
             return []
 
     # ── Status polling ────────────────────────────────────────────────────────
 
     def _wait_robot_free(self) -> None:
-        """Poll ROST until the robot reports FREE (0)."""
+        """Poll ROST until the robot reports FREE (0). Used after axis-move commands (MORO/MOAX)."""
         while True:
             status = self.send_packet("ROST")
+            if status and status[0] == self._FREE:
+                return
+            time.sleep(self._POLL_INTERVAL)
+
+    def _wait_sequence_free(self) -> None:
+        """Poll SQST until the sequence reports FREE (0). Used after sequence commands (HORO)."""
+        while True:
+            status = self.send_packet("SQST")
             if status and status[0] == self._FREE:
                 return
             time.sleep(self._POLL_INTERVAL)
@@ -307,9 +324,14 @@ class _LegacyN9:
     # ── Command interface (matches what N9RobotController calls) ──────────────
 
     def home(self) -> None:
-        """Send HORO and block until the robot is free."""
+        """Send HORO and block until the sequence reports FREE via SQST.
+
+        HORO is a firmware sequence command — its completion must be polled with
+        SQST (sequence status), not ROST (robot/axis status). Legacy code uses
+        get_sequence_status() → SQST for this exact reason.
+        """
         self.send_packet("HORO")
-        self._wait_robot_free()
+        self._wait_sequence_free()
 
     def move_arm(
         self,
@@ -321,23 +343,30 @@ class _LegacyN9:
         """
         Move the arm.
           move_arm(x=..., y=...) — XY cartesian move using inverse kinematics
-                                   → SYNC elbow + shoulder
+                                   → MORO [gripper, elbow, shoulder, z_hold]
+                                   Gripper angle tracks IK for constant tool orientation.
           move_arm(z=...)        — Z-only move
                                    → MOAX Z_AXIS
         """
         if x is not None and y is not None:
-            _, theta_e, theta_s = _ik(x, y)
+            # Full 4-axis MORO (matches legacy move_xy → move_robot_cts → MORO).
+            # Gripper angle is computed from IK so tool orientation stays constant
+            # across the workspace (DEFAULT_TOOL_ORIENTATION = POS_Y = 0 rad).
+            # Z is held at the last tracked position so this is a pure XY travel.
+            theta_g, theta_e, theta_s = _ik(x, y)
+            g_cts = _rad_to_counts_gripper(theta_g)
             e_cts = _rad_to_counts_elbow(theta_e)
             s_cts = _rad_to_counts_shoulder(theta_s)
             self.send_packet(
-                "SYNC",
-                [_ELBOW, _SHOULDER, e_cts, s_cts, self._DEFAULT_VEL, self._DEFAULT_ACCEL],
+                "MORO",
+                [g_cts, e_cts, s_cts, self._z_cts, self._DEFAULT_VEL, self._DEFAULT_ACCEL],
             )
             if wait:
                 self._wait_robot_free()
 
         elif z is not None:
             z_cts = _mm_to_counts_z(z)
+            self._z_cts = z_cts   # keep Z tracking in sync
             self.send_packet(
                 "MOAX",
                 [_Z_AXIS, z_cts, self._DEFAULT_VEL, self._DEFAULT_ACCEL],
@@ -359,6 +388,19 @@ class _LegacyN9:
             [g, e, s, z, self._DEFAULT_VEL, self._DEFAULT_ACCEL],
         )
         self._wait_robot_free()
+
+    def _home_joints(self) -> None:
+        """MORO all joints to zero encoder counts (physical home position).
+
+        This is a software move — it positions all axes at counts = 0 without
+        re-zeroing the encoders. Call home() afterwards to run the firmware
+        HORO homing sequence if encoder re-zeroing is also required.
+
+        Resets _z_cts to 0 because after this move Z is at its home position.
+        """
+        self.send_packet("MORO", [0, 0, 0, 0, self._DEFAULT_VEL, self._DEFAULT_ACCEL])
+        self._wait_robot_free()
+        self._z_cts = 0
 
     def request_command(self, name: str, args: list = []) -> list:
         """Low-level pass-through: send any named command."""
@@ -387,6 +429,11 @@ class N9RobotController:
         device_serial:      FTDI device serial number to connect to (e.g. "FT5SJ5LG").
                             If None, connects to the first available FTDI device.
                             Only used when simulate=False.
+        velocity:           Default move velocity in encoder counts/s.
+                            Overrides _LegacyN9._DEFAULT_VEL (default 10000).
+                            Set higher (e.g. 30000) to match legacy params.py speed.
+        acceleration:       Default move acceleration in encoder counts/s².
+                            Overrides _LegacyN9._DEFAULT_ACCEL (default 200000).
     """
 
     def __init__(
@@ -394,6 +441,8 @@ class N9RobotController:
         simulate: bool = True,
         safe_travel_z_mm: float = 80.0,
         device_serial: "str | None" = None,
+        velocity: "int | None" = None,
+        acceleration: "int | None" = None,
     ) -> None:
         self.simulate = simulate
         self.safe_travel_z_mm = safe_travel_z_mm
@@ -408,9 +457,15 @@ class N9RobotController:
                     f"Check that the robot is powered, the USB cable is connected, and "
                     f"the FTDI D2XX driver is installed. Underlying error: {exc}"
                 ) from exc
+            if velocity is not None:
+                self._c9._DEFAULT_VEL = velocity
+            if acceleration is not None:
+                self._c9._DEFAULT_ACCEL = acceleration
             logger.info(
-                "N9RobotController: connected to hardware (device_serial=%s).",
+                "N9RobotController: connected to hardware (device_serial=%s, vel=%s, accel=%s).",
                 device_serial,
+                self._c9._DEFAULT_VEL,
+                self._c9._DEFAULT_ACCEL,
             )
         else:
             logger.info("N9RobotController: simulation mode — no hardware calls will be made.")
@@ -477,15 +532,19 @@ class N9RobotController:
         """
         Two-step homing to correct robot drift after every high-level move.
 
-        Step 1: Fast XY travel to origin (0, 0) via move_xy — quick.
-        Step 2: Full home sequence via home() — slow but precise.
+        Step 1: MORO all joints to zero encoder counts (joint-space home).
+                This avoids the IK singularity at XY=(0,0) that move_xy would hit.
+        Step 2: Full firmware HORO homing sequence — re-zeros encoders precisely.
 
         Called automatically at the end of pick_from(), place_at(),
         release_at_test_cell(), and retrieve_from_test_cell().
         """
-        logger.info("Homing after move: returning to origin then running home sequence.")
-        self.move_xy(0.0, 0.0)
-        self.home()
+        logger.info("Homing after move: MORO to joint zero then running HORO.")
+        if self.simulate:
+            logger.info("[SIM] home_after_move()")
+            return
+        self._c9._home_joints()   # type: ignore[union-attr]
+        self._c9.home()           # type: ignore[union-attr]
 
     def pick_from(self, x: float, y: float, pick_z: float) -> None:
         """
