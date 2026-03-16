@@ -341,15 +341,16 @@ class ExperimentRunner:
         Loop each Ni strip from the legacy rack through the test cell:
 
           For each FRESH Ni sample in the rack:
-            1. Pick from legacy rack
-            2. Lower into test cell (deposit)
-            3. Engage hydraulic piston
-            4. Fill test cell with H2O (or configured fill_pump)
-            5. Wait wait_time_s seconds
-            6. Drain test cell
-            7. Release piston
-            8. Retrieve sample from test cell
-            9. Return to original rack slot
+            1.  Pick from legacy rack
+            2.  Move to test cell position (gripper holding sample)
+            3.  Engage hydraulic piston (before releasing gripper)
+            4.  Open gripper and home arm
+            5.  Fill test cell with H2O (fill_pump, e.g. H2O_ECELL)
+            6.  Wait wait_time_s seconds (default 5 s)
+            7.  Drain test cell (Drain peristaltic pump)
+            8.  Release piston
+            9.  Retrieve sample from test cell
+            10. Return to original rack slot
         """
         demo_cfg = self.exp_cfg.test_cell_demo
         if demo_cfg is None:
@@ -402,16 +403,21 @@ class ExperimentRunner:
                 # 5. Fill test cell with water (H2O_ECELL)
                 self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
 
-                # 6. Drain (peristaltic Drain pump)
+                # 6. Wait
+                wait_s = getattr(demo_cfg, "wait_time_s", 5.0)
+                logger.info("  Holding for %.0f s ...", wait_s)
+                time.sleep(wait_s)
+
+                # 7. Drain (peristaltic Drain pump)
                 self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
 
-                # 7. Release piston
+                # 8. Release piston
                 self.pump_ctrl.release_piston()
 
-                # 8. Retrieve sample
+                # 9. Retrieve sample
                 self.robot.retrieve_from_test_cell(tc_xyz)
 
-                # 9. Return to rack slot
+                # 10. Return to rack slot
                 self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])
 
                 self.state.return_sample_from_test_cell_to_rack(
