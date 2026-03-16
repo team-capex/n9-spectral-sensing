@@ -225,8 +225,8 @@ class BoardManager:
         for bc in boards:
             if not (1 <= bc.sensors_in_use <= 16):
                 raise ValueError(f"{bc.board_id}: sensors_in_use must be 1..16")
-            if bc.sensor_settings.gain not in (1, 2, 4, 8):
-                raise ValueError(f"{bc.board_id}: gain must be 1,2,4,8")
+            if bc.sensor_settings.gain not in (1, 2, 4, 8, 16, 32, 64, 128, 256):
+                raise ValueError(f"{bc.board_id}: gain must be 1,2,4,8 .. 256")
             if not (0 <= bc.sensor_settings.atime <= 255):
                 raise ValueError(f"{bc.board_id}: atime must be 0..255")
             if not (0 <= bc.sensor_settings.astep <= 65535):

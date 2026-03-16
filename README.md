@@ -18,6 +18,12 @@ Install from Git:
 pip install "parallel-spectral-sensing-boards @ git+https://github.com/team-capex/n9-spectral-sensing.git@v1.0.0"
 ```
 
+## Prerequisite for north_c9
+
+```
+brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf
+```
+
 ## Quick Start
 
 Run a full spectral scan from the terminal, or from your own code, as shown below. A config file must be passed, containing the details of your setup.
