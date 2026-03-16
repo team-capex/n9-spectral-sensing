@@ -5,6 +5,8 @@ import csv
 import logging
 from datetime import datetime
 
+from typing import Optional
+
 logging.basicConfig(level = logging.INFO)
 
 CSV_NAME = "spectral_log.csv"
@@ -56,10 +58,10 @@ class SpectralAnalysis:
     def parse_new_data(
         self,
         input: str,
-        board_id: str | None = None,
-        experiment_id: str | None = None,
-        labels: dict | None = None,
-        temp_c: float | None = None,
+        board_id: Optional[str] = None,
+        experiment_id: Optional[str] = None,
+        labels: Optional[dict] = None,
+        temp_c: Optional[float] = None,
     ):
         """
         Parse a raw data string from the firmware.
@@ -210,7 +212,7 @@ class SpectralAnalysis:
             + ["CLR_raw", "NIR_raw"]
         )
 
-    def append_to_csv(self, hex_color: str | None = None) -> str:
+    def append_to_csv(self, hex_color: Optional[str] = None) -> str:
         """
         Append a single row to ./data/<filename>.
 
