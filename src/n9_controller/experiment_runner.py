@@ -92,6 +92,7 @@ class ExperimentRunner:
         self.robot = N9RobotController(
             simulate=bool(robot_cfg.get("simulate", True)),
             safe_travel_z_mm=float(robot_cfg.get("safe_travel_z_mm", 80.0)),
+            device_serial=robot_cfg.get("device_serial") or None,
         )
 
         dispenser_cfg = self._raw_cfg.get("dispenser", {})
@@ -103,7 +104,7 @@ class ExperimentRunner:
         self.coord_map = CoordinateMap.from_config(self._raw_cfg)
 
         # Pump controller (peristaltic pumps + digital outputs for test cell)
-        robot_hw = None if robot_cfg.get("simulate", True) else getattr(self.robot, "_robot", None)
+        robot_hw = None if robot_cfg.get("simulate", True) else self.robot
         self.pump_ctrl = PumpController(
             simulate=bool(robot_cfg.get("simulate", True)),
             robot=robot_hw,

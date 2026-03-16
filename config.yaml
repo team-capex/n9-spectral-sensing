@@ -17,7 +17,7 @@ PCBs:
 robot:
   simulate: false                 # true = log moves only, no hardware calls
   safe_travel_z_mm: 80.0         # Z height used for all XY travel moves
-  device_serial: null             # FTDI device serial (e.g. "FT5SJ5LG"); null = first found
+  device_serial: "/dev/cu.usbserial-FT5SJ5LG"             # FTDI device serial (e.g. "FT5SJ5LG"); null = first found
 
 # ── Liquid dispenser (hardware TBD) ───────────────────────────────────────────
 # Replace this section once dispenser hardware is defined.
