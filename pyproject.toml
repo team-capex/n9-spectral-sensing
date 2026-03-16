@@ -12,7 +12,7 @@ description = "Python package for fast gathering of spectral sensor data using c
 dynamic = ["version"]
 
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 license = {file="LICENSE"}
 dependencies = [
     "requests>=2.26.0",

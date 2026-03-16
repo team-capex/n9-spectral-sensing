@@ -49,11 +49,9 @@ logger = logging.getLogger(__name__)
 # north_c9 package is optional: only required when not in simulation mode.
 try:
     from north_c9.controller import C9Controller as _C9Controller
-    from ftdi_serial import Serial as _FtdiSerial
     _NORTH_AVAILABLE = True
 except ImportError:
     _C9Controller = None  # type: ignore[assignment]
-    _FtdiSerial = None    # type: ignore[assignment]
     _NORTH_AVAILABLE = False
 
 
@@ -92,41 +90,24 @@ class N9RobotController:
 
         if not simulate:
             try:
-                # device_serial in config can be either:
-                #   - an FTDI chip serial number: "FT5SJ5LG"
-                #   - a full OS device path:       "/dev/cu.usbserial-FT5SJ5LG" (macOS/Linux)
-                #                                  "COM3"                         (Windows)
-                # C9Controller only exposes device_serial (chip serial number), so when a
-                # device path is given we build the ftdi_serial.Serial connection ourselves
-                # and pass it in via the `connection` parameter instead.
-                is_device_path = device_serial is not None and (
-                    device_serial.startswith("/dev/")
-                    or device_serial.upper().startswith("COM")
+                # Matches the legacy connection pattern: NorthC9("A", network_serial="FT5SJ5LG")
+                # device_serial is the bare FTDI chip serial number (e.g. "FT5SJ5LG").
+                # On Windows with the FTDI D2XX driver installed this is the only required
+                # parameter. Pass None to auto-connect to the first available FTDI device.
+                self._c9 = _C9Controller(  # type: ignore[call-arg]
+                    device_serial=device_serial,
+                    home=False,
+                    connect=True,
+                    use_joystick=False,
                 )
-                if is_device_path:
-                    conn = _FtdiSerial(device_port=device_serial, connect=False)  # type: ignore[call-arg]
-                    self._c9 = _C9Controller(  # type: ignore[call-arg]
-                        connection=conn,
-                        home=False,
-                        connect=True,
-                        use_joystick=False,
-                    )
-                else:
-                    self._c9 = _C9Controller(  # type: ignore[call-arg]
-                        device_serial=device_serial,  # None = first available FTDI device
-                        home=False,
-                        connect=True,
-                        use_joystick=False,
-                    )
             except Exception as exc:
-                # C9Controller has a known bug: if the ftdi_serial.Serial() constructor
-                # raises SerialException before self.connection is assigned, the except
-                # block in __init__ then crashes with AttributeError referencing the
-                # unset attribute. We catch all exceptions here and surface a clear message.
+                # C9Controller has a known bug: if ftdi_serial.Serial() raises
+                # SerialException before self.connection is assigned, the except block
+                # crashes with AttributeError. Catch everything and surface a clear message.
                 raise ConnectionError(
                     f"Failed to connect to N9 robot (device_serial={device_serial!r}). "
-                    f"Check that the robot is powered and the USB cable is connected. "
-                    f"Underlying error: {exc}"
+                    f"Check that the robot is powered, the USB cable is connected, and "
+                    f"the FTDI D2XX driver is installed. Underlying error: {exc}"
                 ) from exc
             logger.info("N9RobotController: connected to hardware (device_serial=%s).", device_serial)
         else:
