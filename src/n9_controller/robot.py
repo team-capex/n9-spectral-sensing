@@ -1,7 +1,7 @@
 """
 robot.py
 ========
-Thin wrapper around the 'north' Python package for N9 robot control.
+Thin wrapper around the N9 robot for high-level experiment control.
 
 Provides:
   - Simulation mode (logs all moves without calling hardware)
@@ -10,13 +10,20 @@ Provides:
   - Encoder-count goto() for test-cell positioning
   - Test-cell piston deposit/retrieval helpers
 
-north_c9 API used (via C9Controller instance):
-    home()                — home all main axes
-    move_arm(x, y)        — XY cartesian move at current Z
-    move_arm(z=z)         — Z-only move
-    move({0..3: count})   — direct encoder-count move [gripper, elbow, shoulder, z_axis]
-    request_command('GRPR', [0])  — open gripper
-    request_command('GRPR', [1])  — close gripper
+Wire protocol (legacy, confirmed working on Windows with D2XX driver):
+    Packet: addr_byte + 0x20 + command + [' ' + str(arg)]... + 0x20 + CRC16-LE
+    Response: length_byte + addr_byte + 0x20 + cmd_echo + args... + 0x20 + CRC16-LE
+    The CRC is a standard CRC-16/ARC (Modbus variant).
+
+Commands used:
+    HORO                                — home all main axes
+    SYNC  ax0 ax1 c0 c1 vel accel       — synchronous 2-axis move (elbow + shoulder)
+    MOAX  axis counts vel accel         — single-axis move (used for Z)
+    MORO  g e s z vel accel             — simultaneous 4-axis move (encoder counts)
+    GRPR  0|1                           — open (0) / close (1) gripper
+    SETO  output_num 0|1                — set digital output
+    ROST                                — query robot busy/free status
+    AXST  axis                          — query single-axis state
 
 Test-cell workflow (encoder-count based):
     1. robot.pick_from(rack_x, rack_y, 44.0)          — pick sample from legacy rack
@@ -34,26 +41,337 @@ Usage (simulation):
     robot.home()
     robot.transfer(from_xyz=(100, 50, 2), to_xyz=(300, 50, 2))
 
-Usage (hardware):
-    robot = N9RobotController(simulate=False)  # requires 'north_c9' package
+Usage (hardware, Windows + FTDI D2XX driver):
+    robot = N9RobotController(simulate=False, device_serial="FT5SJ5LG")
     robot.home()
 """
 
 from __future__ import annotations
 
 import logging
+import math
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# north_c9 package is optional: only required when not in simulation mode.
-try:
-    from north_c9.controller import C9Controller as _C9Controller
-    _NORTH_AVAILABLE = True
-except ImportError:
-    _C9Controller = None  # type: ignore[assignment]
-    _NORTH_AVAILABLE = False
 
+# ══════════════════════════════════════════════════════════════════════════════
+# _LegacyN9 — self-contained legacy wire-protocol implementation
+#
+# Reproduces the FTDISerialControllerNetwork + NorthC9.send_packet() protocol
+# from legacy-references/north_c9/north_c9.py verbatim, including:
+#   • CRC-16/ARC (Modbus variant) appended to every outgoing packet
+#   • flush + sleep(0.1) before each write  (RS-485 half-duplex bus settling)
+#   • length-prefixed response with CRC verification
+#   • Inverse kinematics from n9_kinematics.py for XY → encoder-count conversion
+#
+# Only the commands required by N9RobotController are implemented.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── CRC-16/ARC (identical to legacy build_crc / build_crc16_table) ─────────
+
+def _build_crc16_table() -> list:
+    result = []
+    for byte in range(256):
+        crc = 0x0000
+        for _ in range(8):
+            if (byte ^ crc) & 0x0001:
+                crc = (crc >> 1) ^ 0xa001
+            else:
+                crc >>= 1
+            byte >>= 1
+        result.append(crc)
+    return result
+
+_CRC16_TABLE = _build_crc16_table()
+
+def _build_crc(data: bytes) -> bytes:
+    crc = 0xFFFF
+    for byte in data:
+        idx = _CRC16_TABLE[(crc ^ byte) & 0xFF]
+        crc = ((crc >> 8) & 0xFF) ^ idx
+    return crc.to_bytes(2, "little")
+
+
+# ── Kinematics (from legacy n9_kinematics.py) ───────────────────────────────
+# Axis indices
+_GRIPPER  = 0
+_ELBOW    = 1
+_SHOULDER = 2
+_Z_AXIS   = 3
+
+# Counts per unit
+_ELBOW_COUNTS_PER_REV    = 51000
+_SHOULDER_COUNTS_PER_REV = 101000
+_Z_AXIS_COUNTS_PER_MM    = 100
+
+# Offsets / limits
+_ELBOW_OFFSET    = 21250
+_SHOULDER_OFFSET = 33667
+_Z_AXIS_MAX_COUNTS = 26200
+_Z_AXIS_OFFSET     = 30   # mm
+
+# Default tool orientation for move_xy (POS_Y = 0 in n9_kinematics, i.e. arm
+# points in the +Y direction by default; subtract pi/2 because ik() does that
+# internally).
+_DEFAULT_TOOL_ORIENTATION = 0.0   # radians (= POS_Y in kinematics file)
+
+# Arm link lengths (mm)
+_L1 = _L2 = 170.0
+
+
+def _rad_to_counts_elbow(rad: float) -> int:
+    return int(_ELBOW_OFFSET - (rad / math.tau) * _ELBOW_COUNTS_PER_REV + 0.5)
+
+
+def _rad_to_counts_shoulder(rad: float) -> int:
+    return int((rad / math.tau) * _SHOULDER_COUNTS_PER_REV + _SHOULDER_OFFSET + 0.5)
+
+
+def _mm_to_counts_z(z_mm: float) -> int:
+    return int(_Z_AXIS_MAX_COUNTS - _Z_AXIS_COUNTS_PER_MM * (z_mm - _Z_AXIS_OFFSET) + 0.5)
+
+
+def _ik(x: float, y: float) -> tuple[float, float, float]:
+    """
+    Inverse kinematics: (x, y) mm → (gripper_rad, elbow_rad, shoulder_rad).
+
+    Verbatim port of n9_kinematics.ik() with tool_length=0,
+    tool_orientation=DEFAULT_TOOL_ORIENTATION, shoulder_preference=SHOULDER_CENTER.
+    """
+    tool_orientation = _DEFAULT_TOOL_ORIENTATION - math.pi / 2  # = -pi/2
+
+    # IK convention: swap axes  (arm 'home' is along +Y robot axis)
+    x, y = y, -x
+
+    # No tool offset (tool_length = 0), so x/y unchanged.
+
+    # Elbow angle (cosine rule for the triangle formed by l1, l2, reach)
+    cos_e = (x**2 + y**2 - _L1**2 - _L2**2) / (-2.0 * _L1 * _L2)
+    cos_e = max(-1.0, min(1.0, cos_e))  # clamp for numerical safety
+    elbow_inside = math.acos(cos_e)
+    e1 = math.pi - elbow_inside
+    e2 = -e1
+
+    # Shoulder angle
+    pseudo_line  = math.sqrt(x**2 + y**2)
+    pseudo_angle = math.atan2(y, x)
+    cos_s = ((_L1**2 + pseudo_line**2 - _L2**2) / (2.0 * _L1 * pseudo_line))
+    cos_s = max(-1.0, min(1.0, cos_s))
+    shoulder_inside = math.acos(cos_s)
+    s1 = pseudo_angle - shoulder_inside
+    s2 = pseudo_angle + shoulder_inside
+
+    # SHOULDER_CENTER preference: smallest absolute shoulder angle
+    if abs(s1) <= abs(s2):
+        shoulder_final, elbow_final = s1, e1
+    else:
+        shoulder_final, elbow_final = s2, e2
+
+    gripper_final = tool_orientation - (shoulder_final + elbow_final)
+    return gripper_final, elbow_final, shoulder_final
+
+
+# ── _LegacyN9 class ─────────────────────────────────────────────────────────
+
+class _LegacyN9:
+    """
+    Minimal reimplementation of the legacy NorthC9 wire protocol.
+
+    Uses the same bytes-on-wire format as FTDISerialControllerNetwork (Windows)
+    from legacy-references/north_c9/north_c9.py so commands are actually
+    understood by the firmware running on the N9.
+
+    Required Python package: ftdi_serial  (installed as a dependency of north_c9)
+    Required system driver:  FTDI D2XX     (Windows only)
+    """
+
+    _FREE          = 0
+    _MOVE_COMPLETE = 7
+
+    _DEFAULT_VEL   = 5000
+    _DEFAULT_ACCEL = 50000
+
+    _RESP_TIMEOUT  = 0.6   # s — matches legacy TIMEOUT = 0.6
+    _TAIL_TIMEOUT  = 0.2   # s — for the remainder after the length byte
+    _PRE_WRITE_SLEEP = 0.1 # s — legacy sleep(0.1) before every write
+    _POLL_INTERVAL = 0.05  # s — status-polling cadence while waiting
+
+    def __init__(
+        self,
+        device_serial: "str | None",
+        address: str = "A",
+        connect_settle_time: float = 0.5,
+    ) -> None:
+        try:
+            from ftdi_serial import Serial as _FtdiSerial
+        except ImportError as exc:
+            raise ImportError(
+                "The 'ftdi_serial' package is required for N9 hardware control. "
+                "Install north_c9 from the project GitLab to get it, or install "
+                "ftdi_serial directly."
+            ) from exc
+
+        self.c9_addr = ord(address)
+        self._serial = _FtdiSerial(  # type: ignore[call-arg]
+            device_serial=device_serial,
+            read_timeout=self._RESP_TIMEOUT,
+            write_timeout=self._RESP_TIMEOUT,
+            connect_settle_time=connect_settle_time,
+            connect=True,
+        )
+
+    # ── Wire-level send/receive ───────────────────────────────────────────────
+
+    def send_packet(
+        self,
+        command: str,
+        args: list = [],
+        expect_response: bool = True,
+    ) -> list:
+        """
+        Build, send, and receive one legacy-protocol packet.
+
+        Frame format (outgoing):
+            addr_byte  0x20  payload  0x20  CRC16_LE(2)
+        where payload = command + ' ' + ' '.join(str(a) for a in args)
+
+        Frame format (response):
+            length_byte  addr_byte  0x20  cmd_echo  args...  0x20  CRC16_LE(2)
+        The length byte counts all bytes including itself.
+
+        Returns a list of integer arguments from the response.
+        """
+        payload = " ".join([command] + [str(a) for a in args])
+        request = bytes([self.c9_addr]) + b"\x20" + payload.encode("charmap") + b"\x20"
+        request += _build_crc(request)
+
+        self._serial.flush()
+        time.sleep(self._PRE_WRITE_SLEEP)
+        self._serial.write(request)
+
+        if not expect_response:
+            return []
+
+        # Read length byte first, then the rest of the frame
+        pkt_len_b = self._serial.read(1, self._RESP_TIMEOUT)
+        if not pkt_len_b:
+            raise TimeoutError(
+                f"No response from N9 to '{command}' command "
+                f"(waited {self._RESP_TIMEOUT}s). "
+                "Check robot power, e-stop, and USB connection."
+            )
+        pkt_len = int.from_bytes(pkt_len_b, "big")
+        rest = self._serial.read(pkt_len - 1, self._TAIL_TIMEOUT)
+        response = pkt_len_b + rest
+
+        if len(response) < 4:
+            raise IOError(f"Response to '{command}' too short: {response!r}")
+
+        # Verify CRC
+        if _build_crc(response[:-2]) != response[-2:]:
+            raise IOError(
+                f"CRC error in response to '{command}': {response!r}"
+            )
+
+        # Parse args: strip length byte and CRC, split on spaces
+        # Format: addr_byte SP cmd_echo SP [arg SP]... (trailing SP before CRC)
+        inner = response[1:-2]         # strip length + CRC
+        terms = inner.split(b" ")      # [addr, cmd, arg1, arg2, ..., b'']
+        if len(terms) >= 2 and terms[1] == b"ERR!":
+            raise RuntimeError(f"C9 reported ERR! in response to '{command}': {response!r}")
+        try:
+            return [int(t) for t in terms[2:] if t]
+        except ValueError:
+            return []
+
+    # ── Status polling ────────────────────────────────────────────────────────
+
+    def _wait_robot_free(self) -> None:
+        """Poll ROST until the robot reports FREE (0)."""
+        while True:
+            status = self.send_packet("ROST")
+            if status and status[0] == self._FREE:
+                return
+            time.sleep(self._POLL_INTERVAL)
+
+    def _wait_axis_done(self, axis: int) -> None:
+        """Poll AXST for the given axis until MOVE_COMPLETE (7)."""
+        while True:
+            status = self.send_packet("AXST", [axis])
+            if status and status[0] == self._MOVE_COMPLETE:
+                return
+            time.sleep(self._POLL_INTERVAL)
+
+    # ── Command interface (matches what N9RobotController calls) ──────────────
+
+    def home(self) -> None:
+        """Send HORO and block until the robot is free."""
+        self.send_packet("HORO")
+        self._wait_robot_free()
+
+    def move_arm(
+        self,
+        x: Optional[float] = None,
+        y: Optional[float] = None,
+        z: Optional[float] = None,
+        wait: bool = True,
+    ) -> None:
+        """
+        Move the arm.
+          move_arm(x=..., y=...) — XY cartesian move using inverse kinematics
+                                   → SYNC elbow + shoulder
+          move_arm(z=...)        — Z-only move
+                                   → MOAX Z_AXIS
+        """
+        if x is not None and y is not None:
+            _, theta_e, theta_s = _ik(x, y)
+            e_cts = _rad_to_counts_elbow(theta_e)
+            s_cts = _rad_to_counts_shoulder(theta_s)
+            self.send_packet(
+                "SYNC",
+                [_ELBOW, _SHOULDER, e_cts, s_cts, self._DEFAULT_VEL, self._DEFAULT_ACCEL],
+            )
+            if wait:
+                self._wait_robot_free()
+
+        elif z is not None:
+            z_cts = _mm_to_counts_z(z)
+            self.send_packet(
+                "MOAX",
+                [_Z_AXIS, z_cts, self._DEFAULT_VEL, self._DEFAULT_ACCEL],
+            )
+            if wait:
+                self._wait_axis_done(_Z_AXIS)
+
+    def move(self, axis_positions: dict) -> None:
+        """
+        Simultaneous 4-axis move (MORO) in encoder counts.
+        axis_positions: {0: gripper_cts, 1: elbow_cts, 2: shoulder_cts, 3: z_cts}
+        """
+        g = int(axis_positions.get(0, 0))
+        e = int(axis_positions.get(1, 0))
+        s = int(axis_positions.get(2, 0))
+        z = int(axis_positions.get(3, 0))
+        self.send_packet(
+            "MORO",
+            [g, e, s, z, self._DEFAULT_VEL, self._DEFAULT_ACCEL],
+        )
+        self._wait_robot_free()
+
+    def request_command(self, name: str, args: list = []) -> list:
+        """Low-level pass-through: send any named command."""
+        return self.send_packet(name, args)
+
+    def output(self, output_num: int, state: bool) -> None:
+        """Set a digital output on/off (SETO)."""
+        self.send_packet("SETO", [output_num, int(state)])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# N9RobotController — public API
+# ══════════════════════════════════════════════════════════════════════════════
 
 class N9RobotController:
     """
@@ -79,62 +397,21 @@ class N9RobotController:
     ) -> None:
         self.simulate = simulate
         self.safe_travel_z_mm = safe_travel_z_mm
-        self._c9: "object | None" = None
-
-        if not simulate and not _NORTH_AVAILABLE:
-            raise ImportError(
-                "The 'north_c9' package is required for N9 robot hardware control but is not "
-                "installed. Install it with: pip install north_c9 @ git+https://gitlab.com/north-robotics/north_c9 "
-                "To run without hardware, set robot.simulate: true in config.yaml."
-            )
+        self._c9: "_LegacyN9 | None" = None
 
         if not simulate:
             try:
-                # Two-step connection that mirrors the legacy NorthC9 pattern:
-                #
-                # Step 1 — open the FTDI serial port directly via ftdi_serial.Serial.
-                #   Legacy: FTDISerialControllerNetwork(network_serial="FT5SJ5LG")
-                #           → Serial(device_serial="FT5SJ5LG")  [connect=True, port opens now]
-                #   We reproduce this exactly, using the same timeouts:
-                #     read_timeout/write_timeout=0.6  — legacy TIMEOUT=0.6 s
-                #     connect_settle_time=0.5         — brief settle before first command
-                #                                       (legacy had implicit settle from NorthC9 init)
-                #
-                # Step 2 — wrap with C9Controller, passing the pre-opened Serial as
-                #   `connection=`.  Because the port is already live, we set connect=False
-                #   to skip the startup ping sequence (10 retries × 1 s) that the legacy
-                #   code never ran.
-                #
-                # This cleanly separates "open port" from "send startup ping", avoiding:
-                #   • connect=False alone  → port never opened → "cannot write, device is
-                #                            not connected"
-                #   • connect=True alone   → ping retries spam logs for 10 s on startup
-                from ftdi_serial import Serial as _FtdiSerial  # bundled with north_c9
-
-                _conn = _FtdiSerial(  # type: ignore[call-arg]
-                    device_serial=device_serial,
-                    read_timeout=0.6,
-                    write_timeout=0.6,
-                    connect_settle_time=0.5,
-                    connect=True,
-                )
-                self._c9 = _C9Controller(  # type: ignore[call-arg]
-                    connection=_conn,
-                    home=False,
-                    connect=False,       # port already open; skip startup ping
-                    command_delay=0.1,   # 100 ms inter-command delay (RS485 half-duplex)
-                    use_joystick=False,
-                )
+                self._c9 = _LegacyN9(device_serial=device_serial)
             except Exception as exc:
-                # C9Controller has a known bug: if ftdi_serial.Serial() raises
-                # SerialException before self.connection is assigned, the except block
-                # crashes with AttributeError. Catch everything and surface a clear message.
                 raise ConnectionError(
                     f"Failed to connect to N9 robot (device_serial={device_serial!r}). "
                     f"Check that the robot is powered, the USB cable is connected, and "
                     f"the FTDI D2XX driver is installed. Underlying error: {exc}"
                 ) from exc
-            logger.info("N9RobotController: connected to hardware (device_serial=%s).", device_serial)
+            logger.info(
+                "N9RobotController: connected to hardware (device_serial=%s).",
+                device_serial,
+            )
         else:
             logger.info("N9RobotController: simulation mode — no hardware calls will be made.")
 
@@ -142,7 +419,7 @@ class N9RobotController:
 
     def goto(self, counts: list) -> None:
         """
-        Direct encoder-count move via north API's goto().
+        Direct encoder-count move via MORO.
 
         Used for test-cell positions where precise kinematic positioning is
         required and the coordinates are defined in encoder space.
@@ -181,14 +458,14 @@ class N9RobotController:
         if self.simulate:
             logger.info("[SIM] open_gripper()")
             return
-        self._c9.request_command('GRPR', [0])  # type: ignore[union-attr]
+        self._c9.request_command("GRPR", [0])  # type: ignore[union-attr]
 
     def close_gripper(self) -> None:
         """Close the gripper."""
         if self.simulate:
             logger.info("[SIM] close_gripper()")
             return
-        self._c9.request_command('GRPR', [1])  # type: ignore[union-attr]
+        self._c9.request_command("GRPR", [1])  # type: ignore[union-attr]
 
     # ── High-level helpers ────────────────────────────────────────────────────
 
@@ -200,8 +477,8 @@ class N9RobotController:
         """
         Two-step homing to correct robot drift after every high-level move.
 
-        Step 1: Fast XY travel to origin (0, 0) via goto_xy_safe — quick.
-        Step 2: Full home sequence via home_robot() — slow but precise.
+        Step 1: Fast XY travel to origin (0, 0) via move_xy — quick.
+        Step 2: Full home sequence via home() — slow but precise.
 
         Called automatically at the end of pick_from(), place_at(),
         lower_into_test_cell(), and retrieve_from_test_cell().
