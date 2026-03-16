@@ -10,13 +10,13 @@ Provides:
   - Encoder-count goto() for test-cell positioning
   - Test-cell piston deposit/retrieval helpers
 
-north API functions used:
-    home_robot()
-    goto_xy_safe(x, y)
-    goto_z_safe(z)
-    goto(counts)          — direct encoder-count move [gripper, elbow, shoulder, z_axis]
-    open_gripper()
-    close_gripper()
+north_c9 API used (via C9Controller instance):
+    home()                — home all main axes
+    move_arm(x, y)        — XY cartesian move at current Z
+    move_arm(z=z)         — Z-only move
+    move({0..3: count})   — direct encoder-count move [gripper, elbow, shoulder, z_axis]
+    request_command('GRPR', [0])  — open gripper
+    request_command('GRPR', [1])  — close gripper
 
 Test-cell workflow (encoder-count based):
     1. robot.pick_from(rack_x, rack_y, 44.0)          — pick sample from legacy rack
@@ -35,7 +35,7 @@ Usage (simulation):
     robot.transfer(from_xyz=(100, 50, 2), to_xyz=(300, 50, 2))
 
 Usage (hardware):
-    robot = N9RobotController(simulate=False)  # requires 'north' package
+    robot = N9RobotController(simulate=False)  # requires 'north_c9' package
     robot.home()
 """
 
@@ -46,12 +46,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# north package is optional: only required when not in simulation mode.
+# north_c9 package is optional: only required when not in simulation mode.
 try:
-    import north as _north
+    from north_c9.controller import C9Controller as _C9Controller
     _NORTH_AVAILABLE = True
 except ImportError:
-    _north = None  # type: ignore[assignment]
+    _C9Controller = None  # type: ignore[assignment]
     _NORTH_AVAILABLE = False
 
 
@@ -66,20 +66,36 @@ class N9RobotController:
     Args:
         simulate:           If True, log moves without calling hardware.
         safe_travel_z_mm:   Z height (mm) used for all XY travel moves.
+        device_serial:      FTDI device serial number to connect to (e.g. "FT5SJ5LG").
+                            If None, connects to the first available FTDI device.
+                            Only used when simulate=False.
     """
 
-    def __init__(self, simulate: bool = True, safe_travel_z_mm: float = 80.0) -> None:
+    def __init__(
+        self,
+        simulate: bool = True,
+        safe_travel_z_mm: float = 80.0,
+        device_serial: "str | None" = None,
+    ) -> None:
         self.simulate = simulate
         self.safe_travel_z_mm = safe_travel_z_mm
+        self._c9: "object | None" = None
 
         if not simulate and not _NORTH_AVAILABLE:
             raise ImportError(
-                "The 'north' package is required for N9 robot hardware control but is not "
-                "installed. Install it following North Robotics instructions. "
+                "The 'north_c9' package is required for N9 robot hardware control but is not "
+                "installed. Install it with: pip install north_c9 @ git+https://gitlab.com/north-robotics/north_c9 "
                 "To run without hardware, set robot.simulate: true in config.yaml."
             )
 
-        if simulate:
+        if not simulate:
+            self._c9 = _C9Controller(  # type: ignore[call-arg]
+                device_serial=device_serial,
+                home=False,
+                connect=True,
+            )
+            logger.info("N9RobotController: connected to hardware (device_serial=%s).", device_serial)
+        else:
             logger.info("N9RobotController: simulation mode — no hardware calls will be made.")
 
     # ── Low-level wrappers ────────────────────────────────────────────────────
@@ -97,42 +113,42 @@ class N9RobotController:
         if self.simulate:
             logger.info("[SIM] goto(%s)", counts)
             return
-        _north.goto(counts)
+        self._c9.move({0: counts[0], 1: counts[1], 2: counts[2], 3: counts[3]})  # type: ignore[union-attr]
 
     def home(self) -> None:
         """Run the robot homing sequence."""
         if self.simulate:
             logger.info("[SIM] home_robot()")
             return
-        _north.home_robot()
+        self._c9.home()  # type: ignore[union-attr]
 
     def move_xy(self, x: float, y: float) -> None:
         """Move to (x, y) at the current safe travel height."""
         if self.simulate:
             logger.info("[SIM] goto_xy_safe(x=%.2f, y=%.2f)", x, y)
             return
-        _north.goto_xy_safe(x, y)
+        self._c9.move_arm(x=x, y=y, wait=True)  # type: ignore[union-attr]
 
     def move_z(self, z: float) -> None:
         """Move the Z axis to the given height (mm)."""
         if self.simulate:
             logger.info("[SIM] goto_z_safe(z=%.2f)", z)
             return
-        _north.goto_z_safe(z)
+        self._c9.move_arm(z=z, wait=True)  # type: ignore[union-attr]
 
     def open_gripper(self) -> None:
         """Open the gripper."""
         if self.simulate:
             logger.info("[SIM] open_gripper()")
             return
-        _north.open_gripper()
+        self._c9.request_command('GRPR', [0])  # type: ignore[union-attr]
 
     def close_gripper(self) -> None:
         """Close the gripper."""
         if self.simulate:
             logger.info("[SIM] close_gripper()")
             return
-        _north.close_gripper()
+        self._c9.request_command('GRPR', [1])  # type: ignore[union-attr]
 
     # ── High-level helpers ────────────────────────────────────────────────────
 

@@ -15,14 +15,15 @@ PCBs:
 
 # ── N9 Robot ──────────────────────────────────────────────────────────────────
 robot:
-  simulate: true                 # true = log moves only, no hardware calls
+  simulate: false                 # true = log moves only, no hardware calls
   safe_travel_z_mm: 80.0         # Z height used for all XY travel moves
+  device_serial: null             # FTDI device serial (e.g. "FT5SJ5LG"); null = first found
 
 # ── Liquid dispenser (hardware TBD) ───────────────────────────────────────────
 # Replace this section once dispenser hardware is defined.
 dispenser:
   simulate: true                 # true = log actions only; non-simulate raises NotImplementedError
-  volume_per_dispense_ul: 50.0   # placeholder dispensed volume per well
+  volume_per_dispense_ul: 5.0   # placeholder dispensed volume per well
 
 # ── PCB sensing boards in the robot workspace ─────────────────────────────────
 # Each PCB has a 2-column × 8-row grid of sensor wells (16 total).

@@ -32,21 +32,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# north package is optional: same pattern as robot.py.
-try:
-    import north as _north
-    _NORTH_AVAILABLE = True
-except ImportError:
-    _north = None  # type: ignore[assignment]
-    _NORTH_AVAILABLE = False
-
-
 class PumpController:
     """
     Controls peristaltic pumps and digital outputs (piston, drain) on the N9.
 
     When simulate=True (default), all commands are logged only.  In real mode
-    the 'north' package must be available.
+    the 'north_c9' package must be available (via the robot instance).
 
     Args:
         simulate:  If True, log operations without calling hardware.
@@ -68,10 +59,10 @@ class PumpController:
         self.simulate = simulate
         self._robot = robot
 
-        if not simulate and not _NORTH_AVAILABLE:
-            raise ImportError(
-                "The 'north' package is required for pump hardware control but is not "
-                "installed. Set robot.simulate: true in config.yaml to run without hardware."
+        if not simulate and (robot is None or getattr(robot, '_c9', None) is None):
+            raise RuntimeError(
+                "A connected N9RobotController (simulate=False) is required for pump "
+                "hardware control. Set robot.simulate: true in config.yaml to run without hardware."
             )
 
         # Build pump lookup: name → {index, flow_rate_ml_per_s, offset_ml}
@@ -206,7 +197,8 @@ class PumpController:
         return duration
 
     def _hw_set_output(self, index: int, on: bool) -> None:
-        """Call north API set_output."""
-        if _north is None:
-            raise RuntimeError("north package not available")
-        _north.set_output(index, 1 if on else 0)
+        """Delegate digital output to C9Controller via the robot instance."""
+        c9 = getattr(self._robot, '_c9', None)
+        if c9 is None:
+            raise RuntimeError("Robot not connected — cannot set hardware output.")
+        c9.output(index, on)
