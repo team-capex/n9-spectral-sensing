@@ -34,7 +34,7 @@ def load_experiment_dataframe(
         raise ValueError(f"CSV missing required columns: {sorted(missing)}")
 
     # Parse timestamps (ISO expected)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format='%Y-%m-%dT%H_%M_%S.%f', utc=True, errors="coerce")
     if df["timestamp"].isna().any():
         bad = int(df["timestamp"].isna().sum())
         raise ValueError(f"Found {bad} rows with unparseable timestamp values")
@@ -192,9 +192,9 @@ def plot_sensor_spectra(
     ax.set_xticks(x)
     ax.set_xticklabels([c.replace("_%", "") for c in spectral_cols], rotation=45, ha="right")
     if normalization in ("rowmax", "rowsum"):
-        ax.set_ylim(-0.15, 1.05)
+        ax.set_ylim(-0.15, 105)
     else:
-        ax.set_ylim(-0.15, float(np.nanmax(df_sensor[spectral_cols].to_numpy())) * 1.05 if len(df_sensor) else 1.0)
+        ax.set_ylim(-0.15, float(np.nanmax(df_sensor[spectral_cols].to_numpy())) * 105 if len(df_sensor) else 100)
 
     ax.grid(alpha=0.2)
 

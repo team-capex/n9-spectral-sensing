@@ -82,7 +82,7 @@ class SpectralAnalysis:
         for i, r in enumerate(self.data):
             self.data[r] = int(results[i].split('=')[1]) # take number only
 
-        self._timestamp = datetime.now().isoformat()
+        self._timestamp = datetime.now().isoformat().replace(":", "_")
         self._normalised = False
         self._board_id = board_id # reset to None if not given
         self._experiment_id = experiment_id
@@ -142,7 +142,7 @@ class SpectralAnalysis:
     
     def plot_normalised_spectrum(
         self,
-        save: bool = True,
+        save: bool = False,
         show_band_labels_top: bool = True
     ):
         if not self._normalised:

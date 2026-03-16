@@ -3,10 +3,10 @@ data_dir: "data"
 # ── Spectral sensing boards (serial connection to ESP32 PCBs) ─────────────────
 PCBs:
   - board_id: "board-1"
-    com_port: "/dev/cu.wchusbserial10"
+    com_port: "/dev/cu.wchusbserial110"
     sensors_in_use: 16           # 1..16
     sensor_settings:
-      gain: 8                     # 1,2,4,8
+      gain: 64                    # 1,2,4,8
       atime: 255                  # 0..255
       astep: 600                  # 0..65535
     sample_type: "liquid"        # "solid" or "liquid" (solid => LEDs_ON true)
@@ -32,10 +32,10 @@ dispenser:
 sensing_stations:
   - id: "sensing-station-1"
     board_id: "board-1"          # cross-reference to boards[] entry above
-    origin_xyz: [100.0, 50.0, 5.0]
+    origin_xyz: [100.0, 50.0, 50.0]
     col_spacing_mm: 30.0         # spacing between the 2 columns
     row_spacing_mm: 15.0         # spacing between the 8 rows
-    pick_z_mm: 2.0               # Z (mm) to descend to for pick/place on this PCB
+    pick_z_mm: 50.0               # Z (mm) to descend to for pick/place on this PCB
     dispense_z_mm: 8.0           # Z (mm) for dispenser nozzle above sensor well
 
 # ── Sample holders ────────────────────────────────────────────────────────────
