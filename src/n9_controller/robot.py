@@ -90,28 +90,39 @@ class N9RobotController:
 
         if not simulate:
             try:
-                # Matches the legacy connection pattern: NorthC9("A", network_serial="FT5SJ5LG")
-                # device_serial is the bare FTDI chip serial number (e.g. "FT5SJ5LG").
-                # On Windows with the FTDI D2XX driver this is the only required parameter.
-                # Pass None to auto-connect to the first available FTDI device.
+                # Two-step connection that mirrors the legacy NorthC9 pattern:
                 #
-                # connect=False: skip the startup ping. The legacy code never pinged on
-                # init; connect=True caused repeated read-timeout retries (10 × 1 s) on
-                # startup before any real command was sent, even with healthy hardware.
+                # Step 1 — open the FTDI serial port directly via ftdi_serial.Serial.
+                #   Legacy: FTDISerialControllerNetwork(network_serial="FT5SJ5LG")
+                #           → Serial(device_serial="FT5SJ5LG")  [connect=True, port opens now]
+                #   We reproduce this exactly, using the same timeouts:
+                #     read_timeout/write_timeout=0.6  — legacy TIMEOUT=0.6 s
+                #     connect_settle_time=0.5         — brief settle before first command
+                #                                       (legacy had implicit settle from NorthC9 init)
                 #
-                # read_timeout/write_timeout=0.6: legacy used TIMEOUT=0.6 s; the default
-                # 0.5 s was at the edge for pump firmware which needs ~500 ms.
+                # Step 2 — wrap with C9Controller, passing the pre-opened Serial as
+                #   `connection=`.  Because the port is already live, we set connect=False
+                #   to skip the startup ping sequence (10 retries × 1 s) that the legacy
+                #   code never ran.
                 #
-                # command_delay=0.1: legacy flushed + slept 100 ms before every write on
-                # the RS485 half-duplex bus. The new package does this delay after the
-                # response read, which is equivalent for inter-command spacing.
-                self._c9 = _C9Controller(  # type: ignore[call-arg]
+                # This cleanly separates "open port" from "send startup ping", avoiding:
+                #   • connect=False alone  → port never opened → "cannot write, device is
+                #                            not connected"
+                #   • connect=True alone   → ping retries spam logs for 10 s on startup
+                from ftdi_serial import Serial as _FtdiSerial  # bundled with north_c9
+
+                _conn = _FtdiSerial(  # type: ignore[call-arg]
                     device_serial=device_serial,
-                    home=False,
-                    connect=False,
                     read_timeout=0.6,
                     write_timeout=0.6,
-                    command_delay=0.1,
+                    connect_settle_time=0.5,
+                    connect=True,
+                )
+                self._c9 = _C9Controller(  # type: ignore[call-arg]
+                    connection=_conn,
+                    home=False,
+                    connect=False,       # port already open; skip startup ping
+                    command_delay=0.1,   # 100 ms inter-command delay (RS485 half-duplex)
                     use_joystick=False,
                 )
             except Exception as exc:
