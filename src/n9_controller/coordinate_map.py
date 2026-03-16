@@ -22,8 +22,9 @@ Legacy sample rack grid layout (11 cols × 8 rows, configurable origin):
     Absolute position = origin_xyz + (col * col_spacing_mm, row * row_spacing_mm, 0).
 
 Test cell:
-    Robot positions are stored as encoder counts [gripper, elbow, shoulder, z_axis]
-    and dispatched via robot.goto() for precise kinematic positioning.
+    Robot position is stored as XYZ (mm). The arm travels to this point using
+    standard move_xy / move_z calls. Insert sequence: move to xyz → engage piston
+    → open gripper → home → fill (H2O_ECELL pump) → drain (Drain pump).
 """
 
 from __future__ import annotations
@@ -85,19 +86,15 @@ class TestCellLayout:
     """
     Test cell configuration.
 
-    Robot positions are encoder counts [gripper, elbow, shoulder, z_axis]
-    dispatched via robot.goto() for precise kinematic positioning.
-
-    Legacy positions (from locator.py):
-        insert_counts = [-1159, 33780, 4481, 10840]  # SAMPLE_INSERT_POS
-        test_counts   = [-1131, 33714, 4517, 14440]  # SAMPLE_TEST_POS
+    The robot arm travels to xyz using standard XYZ moves.
+    Insert sequence: move to xyz → engage piston → open gripper → home
+                     → fill (fill_pump) → drain (drain_pump).
     """
-    insert_counts: list         # encoder counts for sample insertion depth
-    test_counts: list           # encoder counts for test/approach position
+    xyz: XYZ                    # robot XYZ (mm) for sample insertion/test position
     safe_travel_z_mm: float     # Z (mm) to raise to before/after test cell moves
     piston_output_index: int    # digital output index for hydraulic piston
-    drain_output_index: int     # digital output index for drain valve
     fill_pump: str              # peristaltic pump name for filling (e.g. "H2O_ECELL")
+    drain_pump: str             # peristaltic pump name for draining (e.g. "Drain")
     fill_volume_ml: float       # volume to fill the test cell (mL)
 
 
@@ -199,8 +196,12 @@ class CoordinateMap:
 
     @property
     def test_cell(self) -> TestCellLayout:
-        """Direct access to the TestCellLayout (for encoder-count robot moves)."""
+        """Direct access to the TestCellLayout."""
         return self._test_cell
+
+    def test_cell_xyz(self) -> XYZ:
+        """XYZ (mm) of the test cell insertion/test position."""
+        return self._test_cell.xyz
 
     # ── Index helpers (static) ────────────────────────────────────────────────
 
@@ -306,12 +307,11 @@ class CoordinateMap:
 
         tc = cfg["test_cell"]
         test_cell = TestCellLayout(
-            insert_counts=list(tc["insert_counts"]),
-            test_counts=list(tc["test_counts"]),
-            safe_travel_z_mm=float(tc.get("safe_travel_z_mm", 292.0)),
+            xyz=tuple(tc["xyz"]),                                       # type: ignore[arg-type]
+            safe_travel_z_mm=float(tc.get("safe_travel_z_mm", 200.0)),
             piston_output_index=int(tc.get("piston_output_index", 2)),
-            drain_output_index=int(tc.get("drain_output_index", 3)),
             fill_pump=str(tc.get("fill_pump", "H2O_ECELL")),
+            drain_pump=str(tc.get("drain_pump", "Drain")),
             fill_volume_ml=float(tc.get("fill_volume_ml", 11.5)),
         )
 

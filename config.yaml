@@ -82,16 +82,15 @@ peristaltic_pumps:
 
 # ── Test cell ─────────────────────────────────────────────────────────────────
 # Single-sample electrochemical station. Holds one sample at a time.
-# Robot positions are encoder counts [gripper, elbow, shoulder, z_axis] — use robot.goto().
-# Legacy positions from locator.py (heights may be re-tuned on the new setup).
+# Robot position is XYZ (mm) — arm travels to this point with gripper holding sample.
+# Insert procedure: move to xyz → engage piston → open gripper → home
+#                   → fill (H2O_ECELL pump) → drain (Drain pump)
 test_cell:
-  # Encoder-count positions — from legacy locator.py
-  insert_counts: [-1159, 33780, 4481, 10840]  # SAMPLE_INSERT_POS: sample at insertion depth
-  test_counts:   [-1131, 33714, 4517, 14440]  # SAMPLE_TEST_POS:   sample at test position
+  xyz: [281.25, 75, 105]                       # robot XYZ (mm) for sample insertion/test position
   safe_travel_z_mm: 200.0                      # Z (mm) to raise to before/after test cell moves
-  # Digital output indices (from legacy params.py ECELL_INDICES)
+  # Digital output index (from legacy params.py ECELL_INDICES)
   piston_output_index: 2                       # hydraulic piston (on = engage/clamp)
-  drain_output_index:  3                       # drain valve (on = open drain)
-  # Fill/drain defaults (overridden in experiment.yaml test_cell_demo section)
-  fill_pump: "H2O_ECELL"
+  # Fill/drain pumps (from peristaltic_pumps section above)
+  fill_pump: "H2O_ECELL"                       # pump used to fill the test cell
+  drain_pump: "Drain"                          # pump used to drain the test cell
   fill_volume_ml: 11.5                         # ECELL_VOLUME from legacy

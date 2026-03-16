@@ -357,6 +357,7 @@ class ExperimentRunner:
             return
 
         tc = self.coord_map.test_cell
+        tc_xyz = tc.xyz
 
         # Collect Ni sample specs pointing to test_cell destination
         ni_racks = [
@@ -387,29 +388,28 @@ class ExperimentRunner:
                 # 1. Pick from rack
                 self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
 
-                # 2. Deposit in test cell (robot lowers, opens gripper, raises)
-                self.robot.lower_into_test_cell(tc.insert_counts)
+                # 2. Move to test cell position (gripper still holding sample)
+                self.robot.move_to_test_cell(tc_xyz)
 
-                # 3. Engage piston
+                # 3. Engage piston to trap sample before releasing gripper
                 self.pump_ctrl.engage_piston()
                 self.state.set_sample_in_test_cell(sample_id, True)
                 self.state.save(self._state_dir)
 
-                # 4. Fill test cell
+                # 4. Open gripper and home arm
+                self.robot.release_at_test_cell()
+
+                # 5. Fill test cell with water (H2O_ECELL)
                 self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
 
-                # 5. Wait
-                logger.info("  Holding for %.0f s ...", demo_cfg.wait_time_s)
-                time.sleep(demo_cfg.wait_time_s)
-
-                # 6. Drain
+                # 6. Drain (peristaltic Drain pump)
                 self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
 
                 # 7. Release piston
                 self.pump_ctrl.release_piston()
 
                 # 8. Retrieve sample
-                self.robot.retrieve_from_test_cell(tc.insert_counts)
+                self.robot.retrieve_from_test_cell(tc_xyz)
 
                 # 9. Return to rack slot
                 self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])

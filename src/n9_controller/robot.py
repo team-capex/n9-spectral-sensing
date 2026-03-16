@@ -25,15 +25,15 @@ Commands used:
     ROST                                — query robot busy/free status
     AXST  axis                          — query single-axis state
 
-Test-cell workflow (encoder-count based):
-    1. robot.pick_from(rack_x, rack_y, 44.0)          — pick sample from legacy rack
-    2. robot.lower_into_test_cell(insert_counts)       — goto insert pos, open gripper
-    3. pump_ctrl.engage_piston()                       — clamp sample
-    4. pump_ctrl.fill_peristaltic("H2O_ECELL", vol)   — fill cell
-    5. time.sleep(wait_s)
-    6. pump_ctrl.drain()                               — empty cell
+Test-cell insert workflow (XYZ-based):
+    1. robot.pick_from(rack_x, rack_y, 44.0)           — pick sample from legacy rack
+    2. robot.move_to_test_cell(xyz)                    — travel to test cell position
+    3. pump_ctrl.engage_piston()                       — clamp sample (before releasing gripper)
+    4. robot.release_at_test_cell()                    — open gripper, home arm
+    5. pump_ctrl.fill_peristaltic("H2O_ECELL", vol)   — fill cell
+    6. pump_ctrl.drain(vol)                            — drain cell (Drain peristaltic pump)
     7. pump_ctrl.release_piston()                      — unclamp
-    8. robot.retrieve_from_test_cell(insert_counts)    — goto insert pos, close gripper
+    8. robot.retrieve_from_test_cell(xyz)              — move to pos, close gripper, home
     9. robot.place_at(rack_x, rack_y, 44.0)            — return to rack
 
 Usage (simulation):
@@ -481,7 +481,7 @@ class N9RobotController:
         Step 2: Full home sequence via home() — slow but precise.
 
         Called automatically at the end of pick_from(), place_at(),
-        lower_into_test_cell(), and retrieve_from_test_cell().
+        release_at_test_cell(), and retrieve_from_test_cell().
         """
         logger.info("Homing after move: returning to origin then running home sequence.")
         self.move_xy(0.0, 0.0)
@@ -540,45 +540,64 @@ class N9RobotController:
         self.pick_from(fx, fy, from_pick_z if from_pick_z is not None else fz)
         self.place_at(tx, ty, to_place_z if to_place_z is not None else tz)
 
-    # ── Test-cell helpers (encoder-count based) ───────────────────────────────
+    # ── Test-cell helpers (XYZ-based) ─────────────────────────────────────────
 
-    def lower_into_test_cell(self, insert_counts: list) -> None:
+    def move_to_test_cell(self, xyz: tuple) -> None:
         """
-        Deposit a sample (already gripped) into the test cell at the insert position.
+        Move to the test cell position while holding the sample in the gripper.
+
+        Call pump_ctrl.engage_piston() AFTER this returns (before releasing gripper).
 
         Sequence:
-          1. goto(insert_counts)  — move to test cell insertion depth
-          2. open_gripper()       — release sample; piston will clamp it next
-          3. raise_to_safe()      — withdraw to safe Z
-
-        Call pump_ctrl.engage_piston() AFTER this method returns.
+          1. raise_to_safe()  — ensure safe Z before XY travel
+          2. move_xy(x, y)    — travel over test cell
+          3. move_z(z)        — lower to insertion depth
 
         Args:
-            insert_counts: Encoder counts for the insertion position
-                           (e.g. SAMPLE_INSERT_POS from legacy locator.py).
+            xyz: (x, y, z) robot coordinates (mm) of the test cell position.
         """
-        logger.info("Lowering sample into test cell (counts=%s)", insert_counts)
-        self.goto(insert_counts)
-        self.open_gripper()
+        x, y, z = xyz
+        logger.info("Moving to test cell position xyz=(%.2f, %.2f, %.2f)", x, y, z)
         self.raise_to_safe()
+        self.move_xy(x, y)
+        self.move_z(z)
+
+    def release_at_test_cell(self) -> None:
+        """
+        Open the gripper and home the arm after the piston has been engaged.
+
+        Call pump_ctrl.engage_piston() BEFORE this method.
+
+        Sequence:
+          1. open_gripper()     — release sample (piston already clamping it)
+          2. home_after_move()  — return arm to home position
+        """
+        logger.info("Releasing sample at test cell: opening gripper and homing")
+        self.open_gripper()
         self.home_after_move()
 
-    def retrieve_from_test_cell(self, insert_counts: list) -> None:
+    def retrieve_from_test_cell(self, xyz: tuple) -> None:
         """
         Retrieve a sample from the test cell after the piston has been released.
 
-        Sequence:
-          1. goto(insert_counts)  — move to test cell insertion depth
-          2. close_gripper()      — grip sample
-          3. raise_to_safe()      — lift sample clear of test cell
-
         Call pump_ctrl.release_piston() BEFORE this method.
 
+        Sequence:
+          1. raise_to_safe()  — ensure safe Z before XY travel
+          2. move_xy(x, y)    — travel over test cell
+          3. move_z(z)        — lower to grip depth
+          4. close_gripper()  — grip sample
+          5. raise_to_safe()  — lift sample clear
+          6. home_after_move()
+
         Args:
-            insert_counts: Same encoder counts used in lower_into_test_cell().
+            xyz: (x, y, z) same coordinates used in move_to_test_cell().
         """
-        logger.info("Retrieving sample from test cell (counts=%s)", insert_counts)
-        self.goto(insert_counts)
+        x, y, z = xyz
+        logger.info("Retrieving sample from test cell xyz=(%.2f, %.2f, %.2f)", x, y, z)
+        self.raise_to_safe()
+        self.move_xy(x, y)
+        self.move_z(z)
         self.close_gripper()
         self.raise_to_safe()
         self.home_after_move()
