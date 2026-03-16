@@ -92,12 +92,26 @@ class N9RobotController:
             try:
                 # Matches the legacy connection pattern: NorthC9("A", network_serial="FT5SJ5LG")
                 # device_serial is the bare FTDI chip serial number (e.g. "FT5SJ5LG").
-                # On Windows with the FTDI D2XX driver installed this is the only required
-                # parameter. Pass None to auto-connect to the first available FTDI device.
+                # On Windows with the FTDI D2XX driver this is the only required parameter.
+                # Pass None to auto-connect to the first available FTDI device.
+                #
+                # connect=False: skip the startup ping. The legacy code never pinged on
+                # init; connect=True caused repeated read-timeout retries (10 × 1 s) on
+                # startup before any real command was sent, even with healthy hardware.
+                #
+                # read_timeout/write_timeout=0.6: legacy used TIMEOUT=0.6 s; the default
+                # 0.5 s was at the edge for pump firmware which needs ~500 ms.
+                #
+                # command_delay=0.1: legacy flushed + slept 100 ms before every write on
+                # the RS485 half-duplex bus. The new package does this delay after the
+                # response read, which is equivalent for inter-command spacing.
                 self._c9 = _C9Controller(  # type: ignore[call-arg]
                     device_serial=device_serial,
                     home=False,
-                    connect=True,
+                    connect=False,
+                    read_timeout=0.6,
+                    write_timeout=0.6,
+                    command_delay=0.1,
                     use_joystick=False,
                 )
             except Exception as exc:
