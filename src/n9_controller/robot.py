@@ -199,8 +199,8 @@ class _LegacyN9:
     _FREE          = 0
     _MOVE_COMPLETE = 7
 
-    _DEFAULT_VEL   = 15000   # 10000 base × 1.5 (+50%)
-    _DEFAULT_ACCEL = 300000  # 200000 base × 1.5 (+50%)
+    _DEFAULT_VEL   = 30000   # 10000 c9 default 
+    _DEFAULT_ACCEL = 300000  # 200000 c9 default 
 
     _RESP_TIMEOUT  = 0.6   # s — matches legacy TIMEOUT = 0.6
     _TAIL_TIMEOUT  = 0.2   # s — for the remainder after the length byte
@@ -629,16 +629,18 @@ class N9RobotController:
 
     def release_at_test_cell(self) -> None:
         """
-        Open the gripper and home the arm after the piston has been engaged.
+        Open the gripper and clear the arm safely after the piston has been engaged.
 
         Call pump_ctrl.engage_piston() BEFORE this method.
 
         Sequence:
-          1. open_gripper()     — release sample (piston already clamping it)
-          2. home_after_move()  — return arm to home position
+          1. open_gripper()   — release sample (piston already clamping it)
+          2. raise_to_safe()  — move Z up clear of the sample before any XY motion
+          3. home_after_move() — arm is now clear; safe to return to home
         """
-        logger.info("Releasing sample at test cell: opening gripper and homing")
+        logger.info("Releasing sample at test cell: opening gripper, raising, then homing")
         self.open_gripper()
+        self.raise_to_safe()
         self.home_after_move()
 
     def retrieve_from_test_cell(self, xyz: tuple) -> None:
@@ -653,7 +655,10 @@ class N9RobotController:
           3. move_z(z)        — lower to grip depth
           4. close_gripper()  — grip sample
           5. raise_to_safe()  — lift sample clear
-          6. home_after_move()
+
+        Does NOT home after retrieving — the robot holds the sample and the
+        caller is expected to immediately call place_at() to return it to the
+        rack.  Homing while gripping would drop the sample before it is placed.
 
         Args:
             xyz: (x, y, z) same coordinates used in move_to_test_cell().
@@ -665,4 +670,3 @@ class N9RobotController:
         self.move_z(z)
         self.close_gripper()
         self.raise_to_safe()
-        self.home_after_move()

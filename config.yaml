@@ -60,7 +60,7 @@ sample_holders:
 # Move the rack by changing origin_xyz only — spacing and dims stay fixed.
 legacy_sample_racks:
   - rack_id: "legacy-rack-1"
-    origin_xyz: [-174.41, -33.25, 44.0]   # XYZ of slot (col=0, row=0); adjust to physical location
+    origin_xyz: [-61.91, -33.25, 44.0]   # XYZ of slot (col=0, row=0); adjust to physical location
     col_spacing_mm: -25.5                 # X decreases with col (legacy layout)
     row_spacing_mm: 15.5                  # Y increases with row
     n_cols: 11
