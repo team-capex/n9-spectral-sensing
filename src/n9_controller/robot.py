@@ -437,6 +437,16 @@ class N9RobotController:
                             Set higher (e.g. 30000) to match legacy params.py speed.
         acceleration:       Default move acceleration in encoder counts/s².
                             Overrides _LegacyN9._DEFAULT_ACCEL (default 200000).
+        home_interval:      Run home_after_move() only every N completed place_at()
+                            calls instead of after every single move.  Between homes
+                            the arm travels directly to the next pick location without
+                            returning to the physical home position first, which cuts
+                            cycle time significantly for batch transfers.
+                            1 = home after every move (legacy behaviour).
+                            4 = home every 4 moves (recommended default).
+                            home_after_move() is always executed unconditionally for
+                            release_at_test_cell() and when force_home() is called
+                            explicitly (e.g. at the end of a batch).
     """
 
     def __init__(
@@ -446,9 +456,12 @@ class N9RobotController:
         device_serial: "str | None" = None,
         velocity: "int | None" = None,
         acceleration: "int | None" = None,
+        home_interval: int = 1,
     ) -> None:
         self.simulate = simulate
         self.safe_travel_z_mm = safe_travel_z_mm
+        self.home_interval: int = max(1, int(home_interval))
+        self._place_count: int = 0          # incremented by every place_at() call
         self._c9: "_LegacyN9 | None" = None
 
         if not simulate:
@@ -575,11 +588,27 @@ class N9RobotController:
           2. Lower to place_z
           3. Open gripper (release sample)
           4. Raise to safe travel height
+          5. home_after_move() — only every home_interval placements
+             (call force_home() explicitly after the last sample in a batch)
         """
         self.move_xy(x, y)
         self.move_z(place_z)
         self.open_gripper()
         self.raise_to_safe()
+        self._place_count += 1
+        if self._place_count % self.home_interval == 0:
+            self.home_after_move()
+
+    def force_home(self) -> None:
+        """
+        Unconditionally run home_after_move() and reset the place counter.
+
+        Call this at the end of every batch transfer (e.g. after the last
+        pick_from/place_at pair in load_from_legacy_rack_to_pcb or
+        run_ni_test_cell_loop) so the arm always ends each workflow step in
+        the homed position regardless of home_interval.
+        """
+        self._place_count = 0
         self.home_after_move()
 
     def transfer(

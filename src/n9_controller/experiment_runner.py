@@ -95,6 +95,7 @@ class ExperimentRunner:
             device_serial=robot_cfg.get("device_serial") or None,
             velocity=int(robot_cfg["velocity"]) if "velocity" in robot_cfg else None,
             acceleration=int(robot_cfg["acceleration"]) if "acceleration" in robot_cfg else None,
+            home_interval=int(robot_cfg.get("home_interval", 1)),
         )
 
         dispenser_cfg = self._raw_cfg.get("dispenser", {})
@@ -338,6 +339,9 @@ class ExperimentRunner:
                 )
                 self.state.save(self._state_dir)
 
+        # Ensure arm is homed after the batch regardless of home_interval
+        self.robot.force_home()
+
     def run_ni_test_cell_loop(self) -> None:
         """
         Loop each Ni strip from the legacy rack through the test cell:
@@ -427,6 +431,9 @@ class ExperimentRunner:
                 )
                 self.state.save(self._state_dir)
                 logger.info("  %s returned to rack %s", sample_id, rack_slot.location_key)
+
+        # Ensure arm is homed after the batch regardless of home_interval
+        self.robot.force_home()
 
     def start_colour_scanning(self) -> None:
         """
@@ -653,6 +660,9 @@ class ExperimentRunner:
                 )
 
             self.state.save(self._state_dir)
+
+        # Ensure arm is homed after the batch regardless of home_interval
+        self.robot.force_home()
 
     def shutdown(self) -> None:
         """
