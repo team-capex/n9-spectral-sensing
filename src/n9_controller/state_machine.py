@@ -243,10 +243,14 @@ class ExperimentState:
                     rec = HolderSlotRecord(holder_id=layout.holder_id, col=col, row=row)
                     state.holder_slots[rec.location_key] = rec
 
-        # Initialise all legacy rack slots (default EMPTY)
+        # Initialise all legacy rack slots (default EMPTY).
+        # Outer loop = col (X direction, -25.5 mm/step, 11 positions);
+        # inner loop = row (Y direction, +15.5 mm/step, 8 positions).
+        # This makes the robot sweep all Y positions for a given X column
+        # before advancing to the next X column.
         for layout in (rack_layouts or []):
-            for row in range(layout.n_rows):
-                for col in range(layout.n_cols):
+            for col in range(layout.n_cols):
+                for row in range(layout.n_rows):
                     rec = LegacyRackSlotRecord(rack_id=layout.rack_id, col=col, row=row)
                     state.legacy_rack_slots[rec.location_key] = rec
 
