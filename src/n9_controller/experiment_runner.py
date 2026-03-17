@@ -654,6 +654,40 @@ class ExperimentRunner:
 
             self.state.save(self._state_dir)
 
+    def shutdown(self) -> None:
+        """
+        Graceful shutdown: stop the scan thread, turn off all PCB voltages,
+        and persist the current state.
+
+        Safe to call multiple times (idempotent).
+        Called automatically by main() on KeyboardInterrupt or unhandled exception.
+        """
+        logger.info("Shutting down experiment runner ...")
+
+        # Signal the scan thread to stop and wait for it to finish its current scan
+        if self._scan_stop_event:
+            self._scan_stop_event.set()
+        if self._scan_thread and self._scan_thread.is_alive():
+            logger.info("Waiting for scan thread to finish current scan (up to 30 s) ...")
+            self._scan_thread.join(timeout=30.0)
+            if self._scan_thread.is_alive():
+                logger.warning("Scan thread did not stop within 30 s — continuing shutdown.")
+
+        # Turn off all PCB control voltages and close serial ports
+        try:
+            self.board_manager.close()
+        except Exception as exc:
+            logger.warning("board_manager.close() error during shutdown: %s", exc)
+
+        # Persist state so --resume can pick up from here
+        try:
+            self.state.save(self._state_dir)
+            logger.info("State saved to %s", self._state_dir)
+        except Exception as exc:
+            logger.warning("State save failed during shutdown: %s", exc)
+
+        logger.info("Shutdown complete.")
+
     def report_cleaning_needed(self) -> None:
         """
         Write a cleaning report listing all locations that need cleaning and
@@ -825,7 +859,15 @@ def main() -> None:
         experiment_path=args.experiment,
         resume=args.resume,
     )
-    runner.run()
+    try:
+        runner.run()
+    except KeyboardInterrupt:
+        logger.info("Ctrl+C received — stopping experiment.")
+        runner.shutdown()
+    except Exception as exc:
+        logger.error("Experiment failed: %s", exc, exc_info=True)
+        runner.shutdown()
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
