@@ -113,10 +113,13 @@ _SHOULDER_OFFSET = 33667
 _Z_AXIS_MAX_COUNTS = 26200
 _Z_AXIS_OFFSET     = 30   # mm
 
-# Default tool orientation for move_xy (POS_Y = 0 in n9_kinematics, i.e. arm
-# points in the +Y direction by default; subtract pi/2 because ik() does that
-# internally).
-_DEFAULT_TOOL_ORIENTATION = 0.0   # radians (= POS_Y in kinematics file)
+# Default tool orientation for move_xy.
+# Legacy n9_kinematics.py defines POS_Y=0 and POS_X=-pi/2.  ik() subtracts
+# pi/2 internally, so the value here must compensate for that AND for any
+# physical gripper zero offset.  Testing showed the gripper was 90° off when
+# using POS_Y=0, so we use pi/2 here which shifts all gripper angles by +90°.
+# If the gripper corrects in the wrong direction, flip the sign to -pi/2.
+_DEFAULT_TOOL_ORIENTATION = math.pi / 2   # corrected: was 0.0 (POS_Y), 90° off
 
 # Arm link lengths (mm)
 _L1 = _L2 = 170.0
@@ -196,8 +199,8 @@ class _LegacyN9:
     _FREE          = 0
     _MOVE_COMPLETE = 7
 
-    _DEFAULT_VEL   = 10000   # matches C9Controller default (legacy controller.py:42)
-    _DEFAULT_ACCEL = 200000  # matches C9Controller default (legacy controller.py:43)
+    _DEFAULT_VEL   = 15000   # 10000 base × 1.5 (+50%)
+    _DEFAULT_ACCEL = 300000  # 200000 base × 1.5 (+50%)
 
     _RESP_TIMEOUT  = 0.6   # s — matches legacy TIMEOUT = 0.6
     _TAIL_TIMEOUT  = 0.2   # s — for the remainder after the length byte
@@ -554,13 +557,16 @@ class N9RobotController:
           3. Lower to pick_z
           4. Close gripper (grip sample)
           5. Raise to safe travel height
+
+        Does NOT home after picking — the robot holds the sample and the caller
+        is expected to immediately call place_at() or move_to_test_cell().
+        Homing while gripping would disrupt the hold and run HORO unnecessarily.
         """
         self.open_gripper()
         self.move_xy(x, y)
         self.move_z(pick_z)
         self.close_gripper()
         self.raise_to_safe()
-        self.home_after_move()
 
     def place_at(self, x: float, y: float, place_z: float) -> None:
         """
