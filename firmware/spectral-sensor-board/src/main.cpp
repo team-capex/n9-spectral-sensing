@@ -98,6 +98,7 @@ void setup() {
   }
 
   AnalogOut::init();
+  AnalogOut::setVoltage_V(0);
 
   Serial.println("**Available functions**");
 
