@@ -23,6 +23,7 @@ dependencies = [
     "matplotlib>=3.7",
     "pyyaml>=6.0",
     "pygame>=2.0.0",
+    "north_c9 @ git+https://gitlab.com/north-robotics/north_c9"
 ]
 
 classifiers = [

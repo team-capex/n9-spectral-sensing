@@ -73,8 +73,8 @@ test_cell_experiment:
 # Test cell demo configuration for the Ni-strip loop.
 test_cell_demo:
   fill_pump: "H2O_ECELL"     # fill with water via the dedicated test-cell water line
-  fill_volume_ml: 11.5       # full cell volume (ECELL_VOLUME from legacy)
-  wait_time_s: 60.0          # hold time per Ni strip (seconds)
+  fill_volume_ml: 1.0       # full cell volume (ECELL_VOLUME from legacy)
+  wait_time_s: 10.0          # hold time per Ni strip (seconds)
   drain_pump: "Drain"        # drain via the Drain peristaltic pump
 
 # Ordered list of experiment steps.

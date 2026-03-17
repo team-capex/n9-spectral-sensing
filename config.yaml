@@ -60,10 +60,10 @@ sample_holders:
 # Move the rack by changing origin_xyz only — spacing and dims stay fixed.
 legacy_sample_racks:
   - rack_id: "legacy-rack-1"
-    origin_xyz: [-61.91, -33.25, 44.0]   # XYZ of slot (col=0, row=0); adjust to physical location
+    origin_xyz: [-99.91, -33.25, 44.0]   # XYZ of slot (col=0, row=0); adjust to physical location
     col_spacing_mm: -25.5                 # X decreases with col (legacy layout)
     row_spacing_mm: 15.5                  # Y increases with row
-    n_cols: 11
+    n_cols: 9
     n_rows: 8
     pick_z_mm: 44.0                       # height for pick/place (matches legacy Z)
 
@@ -95,4 +95,4 @@ test_cell:
   # Fill/drain pumps (from peristaltic_pumps section above)
   fill_pump: "H2O_ECELL"                       # pump used to fill the test cell
   drain_pump: "Drain"                          # pump used to drain the test cell
-  fill_volume_ml: 11.5                         # ECELL_VOLUME from legacy
+  fill_volume_ml: 0                            # ECELL_VOLUME from legacy

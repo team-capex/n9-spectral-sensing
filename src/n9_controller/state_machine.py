@@ -848,18 +848,26 @@ def _state_from_dict(data: dict) -> ExperimentState:
         for k, v in data.get("holder_slots", {}).items()
     }
 
-    legacy_rack_slots = {
-        k: LegacyRackSlotRecord(
-            rack_id=v["rack_id"],
-            col=v["col"],
-            row=v["row"],
-            state=LegacyRackSlotState(v["state"]),
-            sample_id=v.get("sample_id"),
-            sample_type=v.get("sample_type"),
-            last_updated=v.get("last_updated"),
+    # Sort legacy rack slots by (col, row) so iteration always sweeps all
+    # Y-positions (rows) for a given X-column before advancing to the next
+    # column — regardless of the key order stored in the JSON file.
+    _rack_pairs = [
+        (
+            k,
+            LegacyRackSlotRecord(
+                rack_id=v["rack_id"],
+                col=v["col"],
+                row=v["row"],
+                state=LegacyRackSlotState(v["state"]),
+                sample_id=v.get("sample_id"),
+                sample_type=v.get("sample_type"),
+                last_updated=v.get("last_updated"),
+            ),
         )
         for k, v in data.get("legacy_rack_slots", {}).items()
-    }
+    ]
+    _rack_pairs.sort(key=lambda item: (item[1].col, item[1].row))
+    legacy_rack_slots = dict(_rack_pairs)
 
     samples = {
         k: SampleRecord(**v)
