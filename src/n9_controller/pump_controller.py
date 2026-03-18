@@ -122,9 +122,9 @@ class PumpController:
         """
         pump = self._get_pump("Drain")
         if volume_ml is not None:
-            duration_s = self._volume_to_time(pump, volume_ml)
+            duration_s = 4*self._volume_to_time(pump, volume_ml)
         else:
-            duration_s = 5.0   # default flush time
+            duration_s = 20.0   # default flush time
 
         logger.info(
             "Drain pump (idx %d): run for %.2f s (%.1f mL)",
@@ -153,11 +153,13 @@ class PumpController:
         """Engage the hydraulic piston to clamp a sample in the test cell."""
         logger.info("Engaging test cell piston (output index %d)", self._piston_index)
         self.set_output(self._piston_index, True)
+        time.sleep(1)
 
     def release_piston(self) -> None:
         """Release the hydraulic piston."""
         logger.info("Releasing test cell piston (output index %d)", self._piston_index)
         self.set_output(self._piston_index, False)
+        time.sleep(1)
 
     def open_drain(self) -> None:
         """Open the test cell drain valve."""

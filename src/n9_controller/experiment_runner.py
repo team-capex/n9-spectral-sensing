@@ -417,11 +417,12 @@ class ExperimentRunner:
                 # 7. Drain (peristaltic Drain pump)
                 self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
 
-                # 8. Release piston
-                self.pump_ctrl.release_piston()
-
-                # 9. Retrieve sample
+                # 8. Retrieve sample
                 self.robot.retrieve_from_test_cell(tc_xyz)
+
+                # 9. Release piston
+                self.pump_ctrl.release_piston()
+                self.robot.raise_to_safe()
 
                 # 10. Return to rack slot
                 self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])

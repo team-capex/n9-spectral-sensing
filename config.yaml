@@ -72,16 +72,17 @@ legacy_sample_racks:
 # Indices and calibration from legacy C9 system (params.py).
 # Volume model: volume_ml = flow_rate_ml_per_s * time_s + offset_ml
 # → run time = (volume_ml - offset_ml) / flow_rate_ml_per_s
+# 17, 18, 20 dead!
 peristaltic_pumps:
   Drain:       { index: 12, flow_rate_ml_per_s: 2.2326,  offset_ml:  0.0    }
-  KOH:         { index: 13, flow_rate_ml_per_s: 0.3363,  offset_ml:  0.0626 }
-  H2O_ECELL:   { index: 14, flow_rate_ml_per_s: 0.7518,  offset_ml: -0.2341 }
-  H2O:         { index: 15, flow_rate_ml_per_s: 0.6104,  offset_ml:  0.0638 }
+  KOH:         { index: 17, flow_rate_ml_per_s: 0.3363,  offset_ml:  0.0626 }
+  H2O_ECELL:   { index: 13, flow_rate_ml_per_s: 0.7518,  offset_ml: -0.2341 }
+  H2O:         { index: 14, flow_rate_ml_per_s: 0.6104,  offset_ml:  0.0638 }
   Air:         { index: 16, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
-  HCl_ECELL:   { index: 17, flow_rate_ml_per_s: 0.3555,  offset_ml: -0.0795 }
-  H2O_suction: { index: 18, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
-  HCl:         { index: 19, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
-  NaOH:        { index: 20, flow_rate_ml_per_s: 0.4474,  offset_ml:  0.0702 }
+  HCl_ECELL:   { index: 18, flow_rate_ml_per_s: 0.3555,  offset_ml: -0.0795 }
+  H2O_suction: { index: 15, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
+  HCl:         { index: 20, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
+  NaOH:        { index: 19, flow_rate_ml_per_s: 0.4474,  offset_ml:  0.0702 }
 
 # ── Test cell ─────────────────────────────────────────────────────────────────
 # Single-sample electrochemical station. Holds one sample at a time.
@@ -94,6 +95,6 @@ test_cell:
   # Digital output index (from legacy params.py ECELL_INDICES)
   piston_output_index: 2                       # hydraulic piston (on = engage/clamp)
   # Fill/drain pumps (from peristaltic_pumps section above)
-  fill_pump: "H2O_ECELL"                       # pump used to fill the test cell
+  fill_pump: "H2O_VIAL"                       # pump used to fill the test cell
   drain_pump: "Drain"                          # pump used to drain the test cell
   fill_volume_ml: 0                            # ECELL_VOLUME from legacy
