@@ -81,17 +81,17 @@ test_cell_demo:
 steps:
   - home_robot                   # home robot arm
 
-  - #load_from_legacy_rack_to_pcb # move 16 PC strips → sensing-station-1 (dye already in wells)
+  #- load_from_legacy_rack_to_pcb # move 16 PC strips → sensing-station-1 (dye already in wells)
 
-  - #start_colour_scanning        # start continuous spectral measurements in background thread
+  #- start_colour_scanning        # start continuous spectral measurements in background thread
 
   - run_ni_test_cell_loop        # cycle all Ni strips through test cell (fill→piston→60s→drain→return)
 
-  - #wait_for_colour_scanning     # stop scan thread (thread exits after run_ni_test_cell_loop finishes)
+  #- wait_for_colour_scanning     # stop scan thread (thread exits after run_ni_test_cell_loop finishes)
 
-  - #return_all_to_holder         # return PC strips from PCB back to legacy rack
+  #- return_all_to_holder         # return PC strips from PCB back to legacy rack
 
-  - #report_cleaning_needed       # write cleaning report
+  #- report_cleaning_needed       # write cleaning report
 
 # Output settings.
 output:

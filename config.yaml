@@ -77,7 +77,7 @@ peristaltic_pumps:
   Drain:       { index: 12, flow_rate_ml_per_s: 2.2326,  offset_ml:  0.0    }
   KOH:         { index: 17, flow_rate_ml_per_s: 0.3363,  offset_ml:  0.0626 }
   H2O_ECELL:   { index: 13, flow_rate_ml_per_s: 0.7518,  offset_ml: -0.2341 }
-  H2O:         { index: 14, flow_rate_ml_per_s: 0.6104,  offset_ml:  0.0638 }
+  H2O_VIAL:         { index: 14, flow_rate_ml_per_s: 0.6104,  offset_ml:  0.0638 }
   Air:         { index: 16, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
   HCl_ECELL:   { index: 18, flow_rate_ml_per_s: 0.3555,  offset_ml: -0.0795 }
   H2O_suction: { index: 15, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
