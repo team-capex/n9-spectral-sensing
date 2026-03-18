@@ -400,28 +400,32 @@ class ExperimentRunner:
 
                 # 3. Engage piston to trap sample before releasing gripper
                 self.pump_ctrl.engage_piston()
-                self.state.set_sample_in_test_cell(sample_id, True)
-                self.state.save(self._state_dir)
+                try:
+                    self.state.set_sample_in_test_cell(sample_id, True)
+                    self.state.save(self._state_dir)
 
-                # 4. Open gripper and home arm
-                self.robot.release_at_test_cell()
+                    # 4. Open gripper and home arm
+                    self.robot.release_at_test_cell()
 
-                # 5. Fill test cell with water (H2O_ECELL)
-                self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
+                    # 5. Fill test cell with water (H2O_ECELL)
+                    self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
 
-                # 6. Wait
-                wait_s = getattr(demo_cfg, "wait_time_s", 5.0)
-                logger.info("  Holding for %.0f s ...", wait_s)
-                time.sleep(wait_s)
+                    # 6. Wait
+                    wait_s = getattr(demo_cfg, "wait_time_s", 5.0)
+                    logger.info("  Holding for %.0f s ...", wait_s)
+                    time.sleep(wait_s)
 
-                # 7. Drain (peristaltic Drain pump)
-                self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
+                    # 7. Drain (peristaltic Drain pump)
+                    self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
 
-                # 8. Retrieve sample
-                self.robot.retrieve_from_test_cell(tc_xyz)
+                    # 8. Retrieve sample
+                    self.robot.retrieve_from_test_cell(tc_xyz)
 
-                # 9. Release piston
-                self.pump_ctrl.release_piston()
+                finally:
+                    # 9. Release piston — always, even if an exception occurs mid-protocol
+                    logger.info("  Releasing piston.")
+                    self.pump_ctrl.release_piston()
+
                 self.robot.raise_to_safe()
 
                 # 10. Return to rack slot
