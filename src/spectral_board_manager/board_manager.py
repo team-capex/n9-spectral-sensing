@@ -88,7 +88,11 @@ class _BoardRuntime:
     ) -> None:
         """
         One full scan of all active sensors (1..sensors_in_use).
-        Control voltage is applied ONLY during this scan, then returned to 0V.
+
+        Control voltage is expected to already be ON for the duration of the
+        experiment (enabled by BoardManager.enable_control_voltage() at the
+        start of the run and disabled by disable_control_voltage() in the
+        experiment-level finally block).
 
         Args:
             experiment_id:  Experiment identifier written to each CSV row.
@@ -98,32 +102,24 @@ class _BoardRuntime:
                             Provided by ExperimentRunner to tag CSV rows with
                             sample metadata.  Sensors with no entry get None labels.
         """
-        # Control ON for the duration of the scan
-        self._safe_set_voltage(self.cfg.control_voltage)
+        # Read temperature once per scan cycle (25.0 in sim)
+        temp_c = self.sensor.get_temperature()
 
-        try:
-            # Read temperature once per scan cycle (25.0 in sim)
-            temp_c = self.sensor.get_temperature()
+        for i in range(1, self.cfg.sensors_in_use + 1):
+            # Get data string from sensor readings
+            data = self.sensor.read_sensor(i)
 
-            for i in range(1, self.cfg.sensors_in_use + 1):
-                # Get data string from sensor readings
-                data = self.sensor.read_sensor(i)
+            # Look up per-sensor sample metadata (None if not tracking)
+            labels = sensor_labels.get(i) if sensor_labels else None
 
-                # Look up per-sensor sample metadata (None if not tracking)
-                labels = sensor_labels.get(i) if sensor_labels else None
+            # Parse to extract and label data
+            self.analyser.parse_new_data(data, self.cfg.board_id, experiment_id, labels, temp_c)
 
-                # Parse to extract and label data
-                self.analyser.parse_new_data(data, self.cfg.board_id, experiment_id, labels, temp_c)
+            # Plot and estimate HEX colour
+            _, hex_color = self.analyser.plot_normalised_spectrum()
 
-                # Plot and estimate HEX colour
-                _, hex_color = self.analyser.plot_normalised_spectrum()
-
-                # Append labelled data to CSV
-                self.analyser.append_to_csv(hex_color)
-
-        finally:
-            # Absolutely ensure default safe state between runs
-            self._safe_set_voltage(0.0)
+            # Append labelled data to CSV
+            self.analyser.append_to_csv(hex_color)
 
     def wait_for_temperature(
         self,
@@ -301,6 +297,33 @@ class BoardManager:
                     raise RuntimeError(
                         f"Board {futures[fut]} failed wait_for_temperature(): {e}"
                     ) from e
+
+    def enable_control_voltage(self) -> None:
+        """
+        Apply each board's configured control_voltage to its LED driver.
+        Call once at the start of an experiment run.
+        """
+        for b in self._boards:
+            b._safe_set_voltage(b.cfg.control_voltage)
+            logging.info(
+                "Board %s: control voltage ON (%.1f V).",
+                b.cfg.board_id, b.cfg.control_voltage,
+            )
+
+    def disable_control_voltage(self) -> None:
+        """
+        Set all board control voltages to 0 V.
+        Call in the finally block of an experiment run to guarantee LEDs off.
+        """
+        for b in self._boards:
+            try:
+                b._safe_set_voltage(0.0)
+                logging.info("Board %s: control voltage OFF.", b.cfg.board_id)
+            except Exception as exc:
+                logging.warning(
+                    "Board %s: failed to disable control voltage: %s",
+                    b.cfg.board_id, exc,
+                )
 
     def close(self) -> None:
         for b in self._boards:

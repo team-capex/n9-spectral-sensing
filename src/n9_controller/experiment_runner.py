@@ -175,17 +175,22 @@ class ExperimentRunner:
             len(self.exp_cfg.steps),
         )
 
-        for step_name in self.exp_cfg.steps:
-            method = self.STEP_MAP.get(step_name)
-            if method is None:
-                raise ValueError(f"No handler for experiment step '{step_name}'.")
-            logger.info("── Step: %s ──", step_name)
-            method(self)
-            self.state.save(self._state_dir)
+        self.board_manager.enable_control_voltage()
+        try:
+            for step_name in self.exp_cfg.steps:
+                method = self.STEP_MAP.get(step_name)
+                if method is None:
+                    raise ValueError(f"No handler for experiment step '{step_name}'.")
+                logger.info("── Step: %s ──", step_name)
+                method(self)
+                self.state.save(self._state_dir)
 
-        self.state.completed = True
-        self.state.save(self._state_dir)
-        logger.info("Experiment '%s' complete.", self.exp_cfg.experiment_id)
+            self.state.completed = True
+            self.state.save(self._state_dir)
+            logger.info("Experiment '%s' complete.", self.exp_cfg.experiment_id)
+
+        finally:
+            self.board_manager.disable_control_voltage()
 
     # ── Step implementations ──────────────────────────────────────────────────
 
