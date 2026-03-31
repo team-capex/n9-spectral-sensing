@@ -91,6 +91,7 @@ class TestCellDemoConfig:
     """Settings for the demo Ni-strip test cell loop."""
     fill_pump: str          # peristaltic pump name to fill the cell (e.g. "H2O_ECELL")
     fill_volume_ml: float   # volume to fill the cell (mL)
+    drain_volume_ml: float  # volume to empty the cell (mL)
     wait_time_s: float      # how long to hold the sample in the filled cell (seconds)
     drain_pump: str = "Drain"  # peristaltic pump name to drain the cell
 
@@ -255,7 +256,8 @@ def load_experiment(path: str) -> ExperimentConfig:
     if tcd:
         test_cell_demo = TestCellDemoConfig(
             fill_pump=str(tcd.get("fill_pump", "H2O_ECELL")),
-            fill_volume_ml=float(tcd.get("fill_volume_ml", 11.5)),
+            fill_volume_ml=float(tcd.get("fill_volume_ml", 5.0)),
+            drain_volume_ml=float(tcd.get("drain_volume_ml", 5.0)),
             wait_time_s=float(tcd.get("wait_time_s", 60.0)),
             drain_pump=str(tcd.get("drain_pump", "Drain")),
         )

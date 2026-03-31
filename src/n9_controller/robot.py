@@ -200,7 +200,7 @@ class _LegacyN9:
     _MOVE_COMPLETE = 7
 
     _DEFAULT_VEL   = 10000   # 10000 c9 default 
-    _DEFAULT_ACCEL = 50000  # 200000 c9 default 
+    _DEFAULT_ACCEL = 10000  # 200000 c9 default 
 
     _RESP_TIMEOUT  = 0.6   # s — matches legacy TIMEOUT = 0.6
     _TAIL_TIMEOUT  = 0.2   # s — for the remainder after the length byte

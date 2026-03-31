@@ -524,7 +524,7 @@ class ExperimentRunner:
                 self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
                 logger.info("  Holding for %.0f s ...", wait_s)
                 time.sleep(wait_s)
-                self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
+                self.pump_ctrl.drain(demo_cfg.drain_volume_ml)
                 self.robot.retrieve_from_test_cell(tc_xyz)
             finally:
                 logger.info("  Releasing piston.")

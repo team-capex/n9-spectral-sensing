@@ -83,6 +83,7 @@ test_cell_experiment:
 test_cell_demo:
   fill_pump: "H2O_VIAL"
   fill_volume_ml: 5.0
+  drain_volume_ml: 10.0
   wait_time_s: 10.0
   drain_pump: "Drain"
 

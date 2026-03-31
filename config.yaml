@@ -62,7 +62,7 @@ robot:
   simulate: false                 # true = log moves only, no hardware calls
   safe_travel_z_mm: 200.0         # Z height used for all XY travel moves
   device_serial: "FT5SJ5LG"      # bare FTDI chip serial number; null = first found
-  home_interval: 4               # home every N place_at() calls (1 = after every move)
+  home_interval: 6               # home every N place_at() calls (1 = after every move)
   # velocity: 30000               # encoder counts/s  (omit to use default 10000)
   # acceleration: 300000          # encoder counts/s² (omit to use default 200000)
 
@@ -166,10 +166,10 @@ legacy_sample_racks:
 # → run time = (volume_ml - offset_ml) / flow_rate_ml_per_s
 # 17, 18, 20 dead!
 peristaltic_pumps:
-  Drain:       { index: 14, flow_rate_ml_per_s: 2.2326,  offset_ml:  0.0    }
+  Drain:       { index: 13, flow_rate_ml_per_s: 2.2326,  offset_ml:  0.0    }
   KOH:         { index: 17, flow_rate_ml_per_s: 0.3363,  offset_ml:  0.0626 }
-  H2O_ECELL:   { index: 13, flow_rate_ml_per_s: 0.7518,  offset_ml: -0.2341 }
-  H2O_VIAL:    { index: 12, flow_rate_ml_per_s: 0.6104,  offset_ml:  0.0638 }
+  H2O_ECELL:   { index: 12, flow_rate_ml_per_s: 0.7518,  offset_ml: -0.2341 }
+  H2O_VIAL:    { index: 14, flow_rate_ml_per_s: 0.6104,  offset_ml:  0.0638 }
   Air:         { index: 16, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
   HCl_ECELL:   { index: 18, flow_rate_ml_per_s: 0.3555,  offset_ml: -0.0795 }
   H2O_suction: { index: 15, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
