@@ -68,16 +68,22 @@ class SpectralSensor:
         
     @skip_if_sim()
     def check_response(self) -> None:
-        while True:
+        deadline = time.time() + self.timeout
+        while time.time() < deadline:
             data = self.get_data()
 
+            if not data:                    # skip empty lines (Windows readline quirk)
+                continue
             if data.startswith("ESP-ROM:"):
                 continue
-
             if '#' in data:
                 return
             if "Unknown command" in data:
                 raise RuntimeError("Controller board failed to recognise command: " + data)
+
+        raise RuntimeError(
+            f"Timed out after {self.timeout:.0f}s waiting for '#' acknowledgement."
+        )
 
     def extract_readings(self) -> str:
         while True:

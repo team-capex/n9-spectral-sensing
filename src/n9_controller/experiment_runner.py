@@ -125,8 +125,14 @@ class ExperimentRunner:
             timeout=float(self._fluidic_cfg.get("timeout", 60.0)),
         )
 
-        # Spectral board manager (uses the same config.yaml)
-        self.board_manager = BoardManager(config_path)
+        # Spectral board manager — only initialise boards used by this experiment's
+        # sensing_stations; boards with placeholder COM ports are safely skipped.
+        active_board_ids: set[str] = {
+            p["board_id"]
+            for p in self._raw_cfg.get("sensing_stations", [])
+            if p["id"] in self.exp_cfg.sensing_stations
+        }
+        self.board_manager = BoardManager(config_path, board_ids=active_board_ids)
         self.board_manager.experiment_id = self.exp_cfg.experiment_id
 
         # Resolve board_id → sensing station id mapping

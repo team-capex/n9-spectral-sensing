@@ -171,7 +171,15 @@ class BoardManager:
     """
     MAX_BOARDS = 5
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, board_ids: set[str] | None = None):
+        """
+        Args:
+            config_path: Path to config.yaml.
+            board_ids:   Optional set of board_id strings to initialise. When provided,
+                         only boards whose board_id is in this set are connected —
+                         boards with placeholder COM ports that are not in use are skipped.
+                         Pass None to initialise all boards (legacy / CLI behaviour).
+        """
         self.config_path = config_path
         self.cfg = self._load_config(config_path)
 
@@ -183,8 +191,17 @@ class BoardManager:
 
         os.makedirs(self.cfg.data_dir, exist_ok=True)
 
+        active = [
+            bcfg for bcfg in self.cfg.boards
+            if board_ids is None or bcfg.board_id in board_ids
+        ]
+        if board_ids is not None:
+            skipped = [b.board_id for b in self.cfg.boards if b.board_id not in board_ids]
+            if skipped:
+                logging.info("BoardManager: skipping boards not in experiment: %s", skipped)
+
         self._boards: List[_BoardRuntime] = [
-            _BoardRuntime(bcfg, data_dir=self.cfg.data_dir) for bcfg in self.cfg.boards
+            _BoardRuntime(bcfg, data_dir=self.cfg.data_dir) for bcfg in active
         ]
 
         # Optional: lock if you later decide to share a single analyser/file across boards.
