@@ -28,8 +28,8 @@ sensing_stations:
   - sensing-station-1
   - sensing-station-2
   - sensing-station-3
-  - sensing-station-4
-  - sensing-station-5
+  #- sensing-station-4
+  #- sensing-station-5
 
 # Sample holders to draw physical samples from.
 sample_holders:
@@ -51,7 +51,7 @@ legacy_rack_state_path: "legacy_rack_state.json"
 # destination: "pcb" (spectral station) | "test_cell"
 samples:
   - sample_type: "PC"
-    count: 80                       # 5 boards x 16 sensors
+    count: 10                       # 5 boards x 16 sensors
     source: "holder"
     destination: "pcb"
     dye_type: "dye-mixture"         # dye dispensed by add_mixture_to_pcb step

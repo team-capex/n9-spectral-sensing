@@ -3,7 +3,7 @@ data_dir: "data"
 # ── Spectral sensing boards (serial connection to ESP32 PCBs) ─────────────────
 PCBs:
   - board_id: "board-1"
-    com_port: "COM9"
+    com_port: "COM11"
     sensors_in_use: 16           # 1..16
     sensor_settings:
       gain: 64                    # 1,2,4,8
@@ -14,7 +14,7 @@ PCBs:
     target_temp_c: null          # float e.g. 37.0 enables firmware PID; null = heaters off
 
   - board_id: "board-2"
-    com_port: "COM10"            # placeholder — update to actual port
+    com_port: "COM6"            # placeholder — update to actual port
     sensors_in_use: 16
     sensor_settings:
       gain: 64
@@ -25,17 +25,6 @@ PCBs:
     target_temp_c: null
 
   - board_id: "board-3"
-    com_port: "COM11"            # placeholder
-    sensors_in_use: 16
-    sensor_settings:
-      gain: 64
-      atime: 255
-      astep: 600
-    sample_type: "liquid"
-    control_voltage: 9.0
-    target_temp_c: null
-
-  - board_id: "board-4"
     com_port: "COM12"            # placeholder
     sensors_in_use: 16
     sensor_settings:
@@ -46,8 +35,19 @@ PCBs:
     control_voltage: 9.0
     target_temp_c: null
 
+  - board_id: "board-4"
+    com_port: "COM14"            # placeholder
+    sensors_in_use: 16
+    sensor_settings:
+      gain: 64
+      atime: 255
+      astep: 600
+    sample_type: "liquid"
+    control_voltage: 9.0
+    target_temp_c: null
+
   - board_id: "board-5"
-    com_port: "COM13"            # placeholder
+    com_port: "COM15"            # placeholder
     sensors_in_use: 16
     sensor_settings:
       gain: 64
@@ -88,7 +88,7 @@ sensing_stations:
 
   - id: "sensing-station-2"
     board_id: "board-2"
-    origin_xyz: [0.0, 0.0, 52.0]  # placeholder — calibrate before use
+    origin_xyz: [23.1, 260.75, 52.0]  # placeholder — calibrate before use
     col_spacing_mm: 30.0
     row_spacing_mm: -15.0
     pick_z_mm: 52.0
@@ -96,7 +96,7 @@ sensing_stations:
 
   - id: "sensing-station-3"
     board_id: "board-3"
-    origin_xyz: [0.0, 0.0, 52.0]  # placeholder
+    origin_xyz: [-51.9, 223.25, 52.0]  # placeholder
     col_spacing_mm: 30.0
     row_spacing_mm: -15.0
     pick_z_mm: 52.0
@@ -124,7 +124,7 @@ sensing_stations:
 # Add one entry per physical holder installed in the workspace.
 sample_holders:
   - holder_id: "holder-1"
-    origin_xyz: [300.0, 50.0, 5.0]
+    origin_xyz: [225.0, 75.0, 52.0]
     col_spacing_mm: 11.5         # spacing between the 5 columns
     row_spacing_mm: 5.75         # spacing between the 18 rows
     n_cols: 5
@@ -132,7 +132,7 @@ sample_holders:
     pick_z_mm: 2.0               # Z (mm) to descend to for pick/place
 
   - holder_id: "holder-2"
-    origin_xyz: [0.0, 0.0, 5.0]  # placeholder — calibrate before use
+    origin_xyz: [150.0, 75.0, 52.0]  # placeholder — calibrate before use
     col_spacing_mm: 11.5
     row_spacing_mm: 5.75
     n_cols: 5
@@ -140,7 +140,7 @@ sample_holders:
     pick_z_mm: 2.0
 
   - holder_id: "holder-3"
-    origin_xyz: [0.0, 0.0, 5.0]  # placeholder
+    origin_xyz: [225.0, -75.0, 52.0]  # placeholder
     col_spacing_mm: 11.5
     row_spacing_mm: 5.75
     n_cols: 5
@@ -184,7 +184,7 @@ peristaltic_pumps:
 #   pump 2: dye 2
 #   pump 3: dose pump (through robot end-effector pipette)
 fluidic_pump_controller:
-  com_port: "COM20"              # placeholder — update to actual port
+  com_port: "COM13"              # placeholder — update to actual port
   simulate: true
   baud: 115200
   timeout: 60.0
@@ -197,7 +197,7 @@ fluidic_pump_controller:
     prime_volume_ml: 2.0        # volume to prime/flush the dose line
     dose_volume_ml: 0.2         # fixed per-well dispense volume
     flow_rate: 0.05             # ml/s for all stepper pump calls
-    waste_xyz: [0.0, 0.0, 50.0] # placeholder — robot XYZ for pipette priming over waste
+    waste_xyz: [-250.0, 0.0, 50.0] # placeholder — robot XYZ for pipette priming over waste
 
 # ── Test cell ─────────────────────────────────────────────────────────────────
 # Single-sample electrochemical station. Holds one sample at a time.
