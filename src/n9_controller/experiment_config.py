@@ -29,7 +29,12 @@ VALID_STEPS: frozenset[str] = frozenset({
     "home_robot",
     "load_samples_to_pcb",
     "load_from_legacy_rack_to_pcb",
+    "load_from_sample_holders_to_pcb",
     "dispense_dye_to_pcb",
+    "create_mixture",
+    "prime_mixture",
+    "add_mixture_to_pcb",
+    "deprime_mixture",
     "start_colour_scanning",
     "run_test_cell_experiments",
     "run_ni_test_cell_loop",
@@ -91,6 +96,16 @@ class TestCellDemoConfig:
 
 
 @dataclass(frozen=True)
+class MixtureConfig:
+    """Dye mixture preparation parameters (from experiment.yaml mixture: section)."""
+    water_ml: float
+    dye1_ml: float
+    dye2_ml: float
+    prime_volume_ml: float
+    dose_volume_ml: float = 0.2     # fixed per-well dispense volume (ml)
+
+
+@dataclass(frozen=True)
 class OutputConfig:
     """Output paths and flags."""
     cleaning_report_path: str = "data/cleaning_report.txt"
@@ -106,7 +121,12 @@ class ExperimentConfig:
         home_robot
         load_samples_to_pcb
         load_from_legacy_rack_to_pcb
+        load_from_sample_holders_to_pcb
         dispense_dye_to_pcb
+        create_mixture
+        prime_mixture
+        add_mixture_to_pcb
+        deprime_mixture
         start_colour_scanning
         run_test_cell_experiments
         run_ni_test_cell_loop
@@ -129,6 +149,7 @@ class ExperimentConfig:
     output: OutputConfig
     holder_state_path: str              # path to holder_state.json
     legacy_rack_state_path: str         # path to legacy_rack_state.json
+    mixture: Optional[MixtureConfig] = None  # dye mixture config; required for mixture steps
 
 
 def load_experiment(path: str) -> ExperimentConfig:
@@ -243,6 +264,18 @@ def load_experiment(path: str) -> ExperimentConfig:
     holder_state_path = str(raw.get("holder_state_path", "holder_state.json"))
     legacy_rack_state_path = str(raw.get("legacy_rack_state_path", "legacy_rack_state.json"))
 
+    # Dye mixture config
+    mx = raw.get("mixture")
+    mixture: Optional[MixtureConfig] = None
+    if mx:
+        mixture = MixtureConfig(
+            water_ml=float(mx["water_ml"]),
+            dye1_ml=float(mx["dye1_ml"]),
+            dye2_ml=float(mx["dye2_ml"]),
+            prime_volume_ml=float(mx["prime_volume_ml"]),
+            dose_volume_ml=float(mx.get("dose_volume_ml", 0.2)),
+        )
+
     return ExperimentConfig(
         experiment_id=experiment_id,
         description=description,
@@ -258,4 +291,5 @@ def load_experiment(path: str) -> ExperimentConfig:
         output=output,
         holder_state_path=holder_state_path,
         legacy_rack_state_path=legacy_rack_state_path,
+        mixture=mixture,
     )

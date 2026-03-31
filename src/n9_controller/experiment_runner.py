@@ -33,6 +33,7 @@ from n9_controller.dispenser import LiquidDispenser
 from n9_controller.experiment_config import ExperimentConfig, load_experiment
 from n9_controller.pump_controller import PumpController
 from n9_controller.robot import N9RobotController
+from fluidic_hardware.pump_controller import PumpController as FluidicPumpCtrl
 from n9_controller.state_machine import (
     ExperimentState,
     HolderSlotState,
@@ -113,6 +114,15 @@ class ExperimentRunner:
             robot=robot_hw,
             pump_cfg=self._raw_cfg.get("peristaltic_pumps", {}),
             test_cell_cfg=self._raw_cfg.get("test_cell", {}),
+        )
+
+        # Fluidic pump controller (ESP32 stepper pumps for dye mixing + dispensing)
+        self._fluidic_cfg = self._raw_cfg.get("fluidic_pump_controller", {})
+        self.fluidic_pump_ctrl = FluidicPumpCtrl(
+            COM=str(self._fluidic_cfg.get("com_port", "COM1")),
+            baud=int(self._fluidic_cfg.get("baud", 115200)),
+            sim=bool(self._fluidic_cfg.get("simulate", True)),
+            timeout=float(self._fluidic_cfg.get("timeout", 60.0)),
         )
 
         # Spectral board manager (uses the same config.yaml)
@@ -198,6 +208,133 @@ class ExperimentRunner:
         """Home the robot and dispenser."""
         self.robot.home()
         self.dispenser.home_dispenser()
+
+    def load_from_sample_holders_to_pcb(self) -> None:
+        """Alias for load_samples_to_pcb — loads samples from sample holders into PCB slots."""
+        self.load_samples_to_pcb()
+
+    def create_mixture(self) -> None:
+        """
+        Pump water + dye1 + dye2 into the mixing vessel using all stepper pumps simultaneously.
+        Pump assignments come from config.yaml fluidic_pump_controller.mixture.
+        The dose pump (pump 3) is left at 0.0 during mixing.
+        """
+        mx_cfg = self._fluidic_cfg.get("mixture", {})
+        exp_mx = self.exp_cfg.mixture
+        if exp_mx is None:
+            logger.warning("create_mixture: no mixture config in experiment.yaml — skipping.")
+            return
+
+        water_pump = int(mx_cfg.get("water_pump_index", 0))
+        dye1_pump  = int(mx_cfg.get("dye1_pump_index", 1))
+        dye2_pump  = int(mx_cfg.get("dye2_pump_index", 2))
+        flow_rate  = float(mx_cfg.get("flow_rate", 0.05))
+
+        volumes = [0.0, 0.0, 0.0, 0.0]
+        volumes[water_pump] = exp_mx.water_ml
+        volumes[dye1_pump]  = exp_mx.dye1_ml
+        volumes[dye2_pump]  = exp_mx.dye2_ml
+
+        logger.info(
+            "create_mixture: water=%.3f ml (pump %d), dye1=%.3f ml (pump %d), "
+            "dye2=%.3f ml (pump %d), flow=%.3f ml/s",
+            exp_mx.water_ml, water_pump,
+            exp_mx.dye1_ml, dye1_pump,
+            exp_mx.dye2_ml, dye2_pump,
+            flow_rate,
+        )
+        self.fluidic_pump_ctrl.multi_stepper_pump(volumes, flow_rate=flow_rate)
+
+    def prime_mixture(self) -> None:
+        """
+        Move robot to waste position and pump prime_volume_ml through the dose line
+        (pipette end-effector) to fill it with mixture before per-well dispensing.
+        Pipette XY offset is applied so the pipette tip lands over the waste container.
+        """
+        mx_cfg = self._fluidic_cfg.get("mixture", {})
+        exp_mx = self.exp_cfg.mixture
+        if exp_mx is None:
+            logger.warning("prime_mixture: no mixture config — skipping.")
+            return
+
+        waste_xyz  = tuple(mx_cfg.get("waste_xyz", [0.0, 0.0, 50.0]))
+        dose_pump  = int(mx_cfg.get("dose_pump_index", 3))
+        flow_rate  = float(mx_cfg.get("flow_rate", 0.05))
+
+        cx, cy = self._pipette_correction(waste_xyz[0], waste_xyz[1])
+        logger.info(
+            "prime_mixture: moving to waste XYZ=(%.2f, %.2f, %.2f) "
+            "[gripper cmd: (%.2f, %.2f)]",
+            waste_xyz[0], waste_xyz[1], waste_xyz[2], cx, cy,
+        )
+        self.robot.move_xy(cx, cy)
+        self.robot.move_z(waste_xyz[2])
+
+        logger.info(
+            "prime_mixture: pumping %.3f ml on pump %d (flow=%.3f ml/s)",
+            exp_mx.prime_volume_ml, dose_pump, flow_rate,
+        )
+        self.fluidic_pump_ctrl.stepper_pump(dose_pump, exp_mx.prime_volume_ml, flow_rate)
+        self.robot.raise_to_safe()
+
+    def add_mixture_to_pcb(self) -> None:
+        """
+        Iterate all sensing station sensor locations and pump 0.2 ml per well via the
+        dose pump (pipette end-effector). Pipette XY offset is applied for each well.
+
+        Iterates stations in experiment.yaml order, then row-major (row 0..7, col 0..1),
+        matching PCB sensor numbering (sensor_no = row*2 + col + 1).
+        """
+        mx_cfg = self._fluidic_cfg.get("mixture", {})
+        exp_mx = self.exp_cfg.mixture
+        if exp_mx is None:
+            logger.warning("add_mixture_to_pcb: no mixture config — skipping.")
+            return
+
+        dose_pump = int(mx_cfg.get("dose_pump_index", 3))
+        dose_vol  = float(mx_cfg.get("dose_volume_ml", 0.2))
+        flow_rate = float(mx_cfg.get("flow_rate", 0.05))
+        total_wells = 0
+
+        for station_id in self.exp_cfg.sensing_stations:
+            for row in range(8):
+                for col in range(2):
+                    dispense_xyz = self.coord_map.pcb_dispense_xyz(station_id, col, row)
+                    cx, cy = self._pipette_correction(dispense_xyz[0], dispense_xyz[1])
+                    logger.info(
+                        "add_mixture_to_pcb: %s col=%d row=%d → "
+                        "pipette tip (%.2f, %.2f, %.2f) gripper cmd (%.2f, %.2f)",
+                        station_id, col, row,
+                        dispense_xyz[0], dispense_xyz[1], dispense_xyz[2], cx, cy,
+                    )
+                    self.robot.move_xy(cx, cy)
+                    self.robot.move_z(dispense_xyz[2])
+                    self.fluidic_pump_ctrl.stepper_pump(dose_pump, dose_vol, flow_rate)
+                    total_wells += 1
+
+        self.robot.raise_to_safe()
+        logger.info("add_mixture_to_pcb: dispensed to %d wells total.", total_wells)
+
+    def deprime_mixture(self) -> None:
+        """
+        Reverse the dose pump by prime_volume_ml to retract liquid from the pipette,
+        preventing drips after dispensing. Robot stays at current (safe) position.
+        Negative ml = reverse direction per firmware protocol.
+        """
+        mx_cfg = self._fluidic_cfg.get("mixture", {})
+        exp_mx = self.exp_cfg.mixture
+        if exp_mx is None:
+            logger.warning("deprime_mixture: no mixture config — skipping.")
+            return
+
+        dose_pump = int(mx_cfg.get("dose_pump_index", 3))
+        flow_rate = float(mx_cfg.get("flow_rate", 0.05))
+
+        logger.info(
+            "deprime_mixture: reversing pump %d by %.3f ml (flow=%.3f ml/s)",
+            dose_pump, exp_mx.prime_volume_ml, flow_rate,
+        )
+        self.fluidic_pump_ctrl.stepper_pump(dose_pump, -exp_mx.prime_volume_ml, flow_rate)
 
     def load_samples_to_pcb(self) -> None:
         """
@@ -349,19 +486,21 @@ class ExperimentRunner:
 
     def run_ni_test_cell_loop(self) -> None:
         """
-        Loop each Ni strip from the legacy rack through the test cell:
+        Loop each Ni strip through the test cell. Sources samples from:
+          - Legacy rack slots (spec.source in legacy_racks)
+          - Sample holder slots (spec.source == "holder")
 
-          For each FRESH Ni sample in the rack:
-            1.  Pick from legacy rack
-            2.  Move to test cell position (gripper holding sample)
-            3.  Engage hydraulic piston (before releasing gripper)
-            4.  Open gripper and home arm
-            5.  Fill test cell with H2O (fill_pump, e.g. H2O_ECELL)
-            6.  Wait wait_time_s seconds (default 5 s)
-            7.  Drain test cell (Drain peristaltic pump)
-            8.  Release piston
-            9.  Retrieve sample from test cell
-            10. Return to original rack slot
+        For each FRESH Ni sample:
+          1.  Pick from source (rack or holder)
+          2.  Move to test cell position (gripper holding sample)
+          3.  Engage hydraulic piston (before releasing gripper)
+          4.  Open gripper and home arm
+          5.  Fill test cell with H2O (fill_pump)
+          6.  Wait wait_time_s seconds
+          7.  Drain test cell (Drain peristaltic pump)
+          8.  Release piston
+          9.  Retrieve sample from test cell
+          10. Return to original slot
         """
         demo_cfg = self.exp_cfg.test_cell_demo
         if demo_cfg is None:
@@ -370,77 +509,95 @@ class ExperimentRunner:
 
         tc = self.coord_map.test_cell
         tc_xyz = tc.xyz
+        wait_s = getattr(demo_cfg, "wait_time_s", 5.0)
 
-        # Collect Ni sample specs pointing to test_cell destination
-        ni_racks = [
+        def _run_one_sample_through_test_cell(sample_id: str, from_xyz: tuple) -> None:
+            """Inner helper: run a single sample through the full test cell protocol."""
+            logger.info("  %s → test cell", sample_id)
+            self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
+            self.robot.move_to_test_cell(tc_xyz)
+            self.pump_ctrl.engage_piston()
+            try:
+                self.state.set_sample_in_test_cell(sample_id, True)
+                self.state.save(self._state_dir)
+                self.robot.release_at_test_cell()
+                self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
+                logger.info("  Holding for %.0f s ...", wait_s)
+                time.sleep(wait_s)
+                self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
+                self.robot.retrieve_from_test_cell(tc_xyz)
+            finally:
+                logger.info("  Releasing piston.")
+                self.pump_ctrl.release_piston()
+            self.robot.raise_to_safe()
+
+        # ── Source: legacy rack ───────────────────────────────────────────────
+        ni_rack_specs = [
             spec for spec in self.exp_cfg.samples
             if spec.destination == "test_cell"
             and spec.source in self.exp_cfg.legacy_racks
         ]
-
-        for spec in ni_racks:
+        for spec in ni_rack_specs:
             rack_id = spec.source
             candidates = self.state.get_all_fresh_rack_slots(rack_id, spec.sample_type)
             logger.info(
                 "Test cell loop: %d × '%s' from rack '%s'",
                 len(candidates), spec.sample_type, rack_id,
             )
-
             for rack_slot in candidates:
                 sample_id = rack_slot.sample_id
                 if sample_id is None:
                     continue
-
                 from_xyz = self.coord_map.legacy_rack_slot_xyz(
                     rack_slot.rack_id, rack_slot.col, rack_slot.row
                 )
-
-                logger.info("  %s → test cell", sample_id)
-
-                # 1. Pick from rack
-                self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
-
-                # 2. Move to test cell position (gripper still holding sample)
-                self.robot.move_to_test_cell(tc_xyz)
-
-                # 3. Engage piston to trap sample before releasing gripper
-                self.pump_ctrl.engage_piston()
-                try:
-                    self.state.set_sample_in_test_cell(sample_id, True)
-                    self.state.save(self._state_dir)
-
-                    # 4. Open gripper and home arm
-                    self.robot.release_at_test_cell()
-
-                    # 5. Fill test cell with water (H2O_ECELL)
-                    self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
-
-                    # 6. Wait
-                    wait_s = getattr(demo_cfg, "wait_time_s", 5.0)
-                    logger.info("  Holding for %.0f s ...", wait_s)
-                    time.sleep(wait_s)
-
-                    # 7. Drain (peristaltic Drain pump)
-                    self.pump_ctrl.drain(demo_cfg.fill_volume_ml)
-
-                    # 8. Retrieve sample
-                    self.robot.retrieve_from_test_cell(tc_xyz)
-
-                finally:
-                    # 9. Release piston — always, even if an exception occurs mid-protocol
-                    logger.info("  Releasing piston.")
-                    self.pump_ctrl.release_piston()
-
-                self.robot.raise_to_safe()
-
-                # 10. Return to rack slot
+                _run_one_sample_through_test_cell(sample_id, from_xyz)
                 self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])
-
                 self.state.return_sample_from_test_cell_to_rack(
                     sample_id, rack_slot.rack_id, rack_slot.col, rack_slot.row
                 )
                 self.state.save(self._state_dir)
                 logger.info("  %s returned to rack %s", sample_id, rack_slot.location_key)
+
+        # ── Source: sample holder ─────────────────────────────────────────────
+        ni_holder_specs = [
+            spec for spec in self.exp_cfg.samples
+            if spec.destination == "test_cell"
+            and spec.source == "holder"
+        ]
+        for spec in ni_holder_specs:
+            try:
+                holder_slots = self.state.get_fresh_samples(spec.sample_type, spec.count)
+            except ValueError:
+                holder_slots = [
+                    r for r in self.state.holder_slots.values()
+                    if r.state == HolderSlotState.FRESH
+                    and r.sample_type == spec.sample_type
+                ]
+            logger.info(
+                "Test cell loop: %d × '%s' from holder",
+                len(holder_slots), spec.sample_type,
+            )
+            for holder_slot in holder_slots:
+                sample_id = holder_slot.sample_id
+                if sample_id is None:
+                    continue
+                from_xyz = self.coord_map.holder_slot_xyz(
+                    holder_slot.holder_id, holder_slot.col, holder_slot.row
+                )
+                _run_one_sample_through_test_cell(sample_id, from_xyz)
+                self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])
+                self.state.set_sample_in_test_cell(sample_id, False)
+                self.state.return_sample_to_holder(
+                    sample_id,
+                    holder_slot.holder_id,
+                    holder_slot.col,
+                    holder_slot.row,
+                )
+                self.state.save(self._state_dir)
+                logger.info(
+                    "  %s returned to holder %s", sample_id, holder_slot.location_key
+                )
 
         # Ensure arm is homed after the batch regardless of home_interval
         self.robot.force_home()
@@ -755,6 +912,28 @@ class ExperimentRunner:
         print(report)
         logger.info("Cleaning report written to %s", report_path)
 
+    # ── Fluidic helpers ────────────────────────────────────────────────────────
+
+    def _pipette_correction(self, target_x: float, target_y: float) -> tuple[float, float]:
+        """
+        Return the gripper XY to command so the pipette tip lands at (target_x, target_y).
+
+        The pipette is offset pipette_offset_mm along the last kinematic link in the XY
+        plane. For a revolute arm reaching outward, this axis approximates the unit vector
+        from the robot origin (0, 0) to the target. The gripper is commanded further from
+        the origin so the pipette tip ends up at the target.
+
+        Verify the sign against physical setup (simulate=true) before first use —
+        invert if the pipette is mounted on the opposite side of the gripper.
+        """
+        import math
+        offset = float(self._fluidic_cfg.get("pipette_offset_mm", 57.25))
+        dist = math.hypot(target_x, target_y)
+        if dist < 1e-6:
+            return target_x, target_y
+        ux, uy = target_x / dist, target_y / dist
+        return target_x - offset * ux, target_y - offset * uy
+
     # ── Background scanning loop ───────────────────────────────────────────────
 
     def _scan_loop(self, stop_event: threading.Event) -> None:
@@ -831,17 +1010,22 @@ class ExperimentRunner:
 # ── Step dispatch table ───────────────────────────────────────────────────────
 
 ExperimentRunner.STEP_MAP = {
-    "home_robot":                    ExperimentRunner.home_robot,
-    "load_samples_to_pcb":           ExperimentRunner.load_samples_to_pcb,
-    "load_from_legacy_rack_to_pcb":  ExperimentRunner.load_from_legacy_rack_to_pcb,
-    "dispense_dye_to_pcb":           ExperimentRunner.dispense_dye_to_pcb,
-    "start_colour_scanning":         ExperimentRunner.start_colour_scanning,
-    "run_test_cell_experiments":      ExperimentRunner.run_test_cell_experiments,
-    "run_ni_test_cell_loop":          ExperimentRunner.run_ni_test_cell_loop,
-    "wait_for_colour_scanning":      ExperimentRunner.wait_for_colour_scanning,
-    "post_colour_test_cell":         ExperimentRunner.post_colour_test_cell,
-    "return_all_to_holder":          ExperimentRunner.return_all_to_holder,
-    "report_cleaning_needed":        ExperimentRunner.report_cleaning_needed,
+    "home_robot":                        ExperimentRunner.home_robot,
+    "load_samples_to_pcb":               ExperimentRunner.load_samples_to_pcb,
+    "load_from_sample_holders_to_pcb":   ExperimentRunner.load_from_sample_holders_to_pcb,
+    "load_from_legacy_rack_to_pcb":      ExperimentRunner.load_from_legacy_rack_to_pcb,
+    "dispense_dye_to_pcb":               ExperimentRunner.dispense_dye_to_pcb,
+    "create_mixture":                    ExperimentRunner.create_mixture,
+    "prime_mixture":                     ExperimentRunner.prime_mixture,
+    "add_mixture_to_pcb":                ExperimentRunner.add_mixture_to_pcb,
+    "deprime_mixture":                   ExperimentRunner.deprime_mixture,
+    "start_colour_scanning":             ExperimentRunner.start_colour_scanning,
+    "run_test_cell_experiments":         ExperimentRunner.run_test_cell_experiments,
+    "run_ni_test_cell_loop":             ExperimentRunner.run_ni_test_cell_loop,
+    "wait_for_colour_scanning":          ExperimentRunner.wait_for_colour_scanning,
+    "post_colour_test_cell":             ExperimentRunner.post_colour_test_cell,
+    "return_all_to_holder":              ExperimentRunner.return_all_to_holder,
+    "report_cleaning_needed":            ExperimentRunner.report_cleaning_needed,
 }
 
 
