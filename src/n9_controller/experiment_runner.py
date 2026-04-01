@@ -262,13 +262,13 @@ class ExperimentRunner:
         dose_pump  = int(mx_cfg.get("dose_pump_index", 1))
         flow_rate  = float(mx_cfg.get("flow_rate", 0.05))
 
-        cx, cy = self._pipette_correction(waste_xyz[0], waste_xyz[1])
+        offset = float(self._fluidic_cfg.get("pipette_offset_mm", 57.25))
         logger.info(
-            "prime_mixture: moving to waste XYZ=(%.2f, %.2f, %.2f) "
-            "[gripper cmd: (%.2f, %.2f)]",
-            waste_xyz[0], waste_xyz[1], waste_xyz[2], cx, cy,
+            "prime_mixture: moving pipette tip to waste XYZ=(%.2f, %.2f, %.2f) "
+            "(tool_length=%.2f mm)",
+            waste_xyz[0], waste_xyz[1], waste_xyz[2], offset,
         )
-        self.robot.move_xy(cx, cy)
+        self.robot.move_xy_pipette(waste_xyz[0], waste_xyz[1], offset)
         self.robot.move_z(waste_xyz[2])
 
         prime_vol = float(mx_cfg.get("prime_volume_ml", 2.0))
@@ -296,20 +296,20 @@ class ExperimentRunner:
         dose_pump = int(mx_cfg.get("dose_pump_index", 3))
         dose_vol  = float(mx_cfg.get("dose_volume_ml", 0.2))
         flow_rate = float(mx_cfg.get("flow_rate", 0.05))
+        offset    = float(self._fluidic_cfg.get("pipette_offset_mm", 57.25))
         total_wells = 0
 
         for station_id in self.exp_cfg.sensing_stations:
             for row in range(8):
                 for col in range(2):
-                    dispense_xyz = self.coord_map.pcb_sensor_xyz(station_id, col, row)
-                    cx, cy = self._pipette_correction(dispense_xyz[0], dispense_xyz[1])
+                    dispense_xyz = self.coord_map.pcb_pipette_xyz(station_id, col, row)
                     logger.info(
                         "add_mixture_to_pcb: %s col=%d row=%d → "
-                        "pipette tip (%.2f, %.2f, %.2f) gripper cmd (%.2f, %.2f)",
+                        "pipette tip (%.2f, %.2f, %.2f)",
                         station_id, col, row,
-                        dispense_xyz[0], dispense_xyz[1], dispense_xyz[2], cx, cy,
+                        dispense_xyz[0], dispense_xyz[1], dispense_xyz[2],
                     )
-                    self.robot.move_xy(cx, cy)
+                    self.robot.move_xy_pipette(dispense_xyz[0], dispense_xyz[1], offset)
                     self.robot.move_z(dispense_xyz[2])
                     self.fluidic_pump_ctrl.stepper_pump(dose_pump, dose_vol, flow_rate)
                     total_wells += 1
@@ -888,29 +888,6 @@ class ExperimentRunner:
         logger.info("Cleaning report written to %s", report_path)
 
     # ── Fluidic helpers ────────────────────────────────────────────────────────
-
-    def _pipette_correction(self, target_x: float, target_y: float) -> tuple[float, float]:
-        """
-        Return the gripper XY to command so the pipette tip lands at (target_x, target_y).
-
-        The pipette is mounted 57.25 mm beyond the gripper along the elbow link (L2).
-        In robot workspace coordinates, the elbow link direction unit vector is
-        (-sin(φ), cos(φ)) where φ = shoulder_rad + elbow_rad from IK.
-
-        To place the pipette tip at (target_x, target_y):
-            gripper_x = target_x + offset * sin(φ)
-            gripper_y = target_y - offset * cos(φ)
-
-        Since φ depends on the gripper position we solve iteratively (converges in 2–3 steps).
-        """
-        import math
-        offset = float(self._fluidic_cfg.get("pipette_offset_mm", 57.25))
-        cx, cy = target_x, target_y   # initial estimate: gripper at target
-        for _ in range(3):
-            phi = self.robot.link2_angle(cx, cy)
-            cx = target_x + offset * math.sin(phi)
-            cy = target_y - offset * math.cos(phi)
-        return cx, cy
 
     # ── Background scanning loop ───────────────────────────────────────────────
 

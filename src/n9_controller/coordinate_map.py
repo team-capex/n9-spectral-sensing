@@ -44,7 +44,8 @@ class PCBBoardLayout:
     origin_xyz: XYZ             # robot coords (mm) of well (col=0, row=0) = sensor 1
     col_spacing_mm: float       # 30.0 mm between the 2 columns
     row_spacing_mm: float       # 15.0 mm between the 8 rows
-    pick_z_mm: float            # Z to descend to for pick/place and pipette dispensing
+    pick_z_mm: float            # Z to descend to for pick/place (gripper)
+    pipette_dispense_z_mm: float  # Z for pipette tip during liquid dispensing
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,16 @@ class CoordinateMap:
             ox + col * layout.col_spacing_mm,
             oy + row * layout.row_spacing_mm,
             layout.pick_z_mm,
+        )
+
+    def pcb_pipette_xyz(self, pcb_id: str, col: int, row: int) -> XYZ:
+        """XYZ at the sensor well, z = pipette_dispense_z_mm (for pipette liquid dispensing)."""
+        layout = self._get_pcb(pcb_id)
+        ox, oy, _ = layout.origin_xyz
+        return (
+            ox + col * layout.col_spacing_mm,
+            oy + row * layout.row_spacing_mm,
+            layout.pipette_dispense_z_mm,
         )
 
     # ── Sample holder ─────────────────────────────────────────────────────────
@@ -276,6 +287,7 @@ class CoordinateMap:
                 col_spacing_mm=float(p["col_spacing_mm"]),
                 row_spacing_mm=float(p["row_spacing_mm"]),
                 pick_z_mm=float(p["pick_z_mm"]),
+                pipette_dispense_z_mm=float(p.get("pipette_dispense_z_mm", 35.0)),
             )
             for p in cfg.get("sensing_stations", [])
         ]

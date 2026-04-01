@@ -142,22 +142,27 @@ def _mm_to_counts_z(z_mm: float) -> int:
     return int(_Z_AXIS_MAX_COUNTS - _Z_AXIS_COUNTS_PER_MM * (z_mm - _Z_AXIS_OFFSET) + 0.5)
 
 
-def _ik(x: float, y: float) -> tuple[float, float, float]:
+def _ik(x: float, y: float, tool_length: float = 0.0) -> tuple[float, float, float]:
     """
     Inverse kinematics: (x, y) mm → (gripper_rad, elbow_rad, shoulder_rad).
 
-    Verbatim port of n9_kinematics.ik() with tool_length=0,
-    tool_orientation=DEFAULT_TOOL_ORIENTATION, shoulder_preference=SHOULDER_CENTER.
+    Verbatim port of n9_kinematics.ik() with tool_orientation=DEFAULT_TOOL_ORIENTATION,
+    shoulder_preference=SHOULDER_CENTER.
+
+    tool_length: extra reach beyond L2 (mm). When tool_length > 0, the IK solves
+    for the joint angles that place a point tool_length mm beyond the gripper at (x, y)
+    — used for pipette dispensing where L2' = L2 + pipette_offset_mm. Callers that
+    omit tool_length (or pass 0.0) get standard gripper IK, unchanged from before.
     """
     tool_orientation = _DEFAULT_TOOL_ORIENTATION - math.pi / 2  # = -pi/2
 
     # IK convention: swap axes  (arm 'home' is along +Y robot axis)
     x, y = y, -x
 
-    # No tool offset (tool_length = 0), so x/y unchanged.
+    l2_eff = _L2 + tool_length
 
-    # Elbow angle (cosine rule for the triangle formed by l1, l2, reach)
-    cos_e = (x**2 + y**2 - _L1**2 - _L2**2) / (-2.0 * _L1 * _L2)
+    # Elbow angle (cosine rule for the triangle formed by l1, l2_eff, reach)
+    cos_e = (x**2 + y**2 - _L1**2 - l2_eff**2) / (-2.0 * _L1 * l2_eff)
     cos_e = max(-1.0, min(1.0, cos_e))  # clamp for numerical safety
     elbow_inside = math.acos(cos_e)
     e1 = math.pi - elbow_inside
@@ -166,7 +171,7 @@ def _ik(x: float, y: float) -> tuple[float, float, float]:
     # Shoulder angle
     pseudo_line  = math.sqrt(x**2 + y**2)
     pseudo_angle = math.atan2(y, x)
-    cos_s = ((_L1**2 + pseudo_line**2 - _L2**2) / (2.0 * _L1 * pseudo_line))
+    cos_s = (_L1**2 + pseudo_line**2 - l2_eff**2) / (2.0 * _L1 * pseudo_line)
     cos_s = max(-1.0, min(1.0, cos_s))
     shoulder_inside = math.acos(cos_s)
     s1 = pseudo_angle - shoulder_inside
@@ -342,6 +347,7 @@ class _LegacyN9:
         y: Optional[float] = None,
         z: Optional[float] = None,
         wait: bool = True,
+        tool_length: float = 0.0,
     ) -> None:
         """
         Move the arm.
@@ -356,7 +362,7 @@ class _LegacyN9:
             # Gripper angle is computed from IK so tool orientation stays constant
             # across the workspace (DEFAULT_TOOL_ORIENTATION = POS_Y = 0 rad).
             # Z is held at the last tracked position so this is a pure XY travel.
-            theta_g, theta_e, theta_s = _ik(x, y)
+            theta_g, theta_e, theta_s = _ik(x, y, tool_length)
             g_cts = _rad_to_counts_gripper(theta_g)
             e_cts = _rad_to_counts_elbow(theta_e)
             s_cts = _rad_to_counts_shoulder(theta_s)
@@ -544,18 +550,21 @@ class N9RobotController:
         """Move Z to safe travel height."""
         self.move_z(self.safe_travel_z_mm)
 
-    def link2_angle(self, x: float, y: float) -> float:
+    def move_xy_pipette(self, x: float, y: float, tool_length: float) -> None:
         """
-        Angle (radians) of the second arm link (elbow → gripper) in the robot
-        workspace when the gripper is at (x, y).
-
-        In robot workspace the link-2 direction unit vector is (-sin(φ), cos(φ))
-        where φ = shoulder_rad + elbow_rad from inverse kinematics.
+        Move so the pipette tip (tool_length mm beyond the gripper along L2)
+        lands at (x, y). Uses _ik() with extended L2' = L2 + tool_length — exact,
+        single IK call, no approximation or forward-kinematics step.
 
         Pure math — safe to call in both simulate and real modes.
         """
-        _, elbow_rad, shoulder_rad = _ik(x, y)
-        return shoulder_rad + elbow_rad
+        if self.simulate:
+            logger.info(
+                "[SIM] move_xy_pipette(x=%.2f, y=%.2f, tool_length=%.2f)",
+                x, y, tool_length,
+            )
+            return
+        self._c9.move_arm(x=x, y=y, tool_length=tool_length, wait=True)  # type: ignore[union-attr]
 
     def home_after_move(self) -> None:
         """
