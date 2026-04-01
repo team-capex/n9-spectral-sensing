@@ -199,6 +199,12 @@ class ExperimentRunner:
             logger.info("Experiment '%s' complete.", self.exp_cfg.experiment_id)
 
         finally:
+            try:
+                self.robot.return_to_joint_zero()
+            except Exception:
+                logger.warning(
+                    "return_to_joint_zero failed during cleanup — skipping.", exc_info=True
+                )
             self.board_manager.disable_control_voltage()
 
     # ── Step implementations ──────────────────────────────────────────────────

@@ -550,6 +550,20 @@ class N9RobotController:
         """Move Z to safe travel height."""
         self.move_z(self.safe_travel_z_mm)
 
+    def return_to_joint_zero(self) -> None:
+        """
+        Move all joints to zero encoder counts (MORO [0,0,0,0]) without running
+        the firmware HORO homing sequence.
+
+        Pre-positions the arm at the physical home location so the next HORO
+        sequence completes faster. Called automatically at experiment shutdown.
+        Safe to call in simulate mode — logs only, no hardware call.
+        """
+        if self.simulate:
+            logger.info("[SIM] return_to_joint_zero()")
+            return
+        self._c9._home_joints()  # type: ignore[union-attr]
+
     def move_xy_pipette(self, x: float, y: float, tool_length: float) -> None:
         """
         Move so the pipette tip (tool_length mm beyond the gripper along L2)
