@@ -195,7 +195,7 @@ fluidic_pump_controller:
     dye2_pump_index: 3
     dose_pump_index: 0
     prime_volume_ml: 2.0        # volume to prime/flush the dose line
-    dose_volume_ml: 0.2         # fixed per-well dispense volume
+    dose_volume_ml: 0.05        # fixed per-well dispense volume
     flow_rate: 0.2              # ml/s for all stepper pump calls
     waste_xyz: [-250.0, 0.0, 50.0] # placeholder — robot XYZ for pipette priming over waste
 
