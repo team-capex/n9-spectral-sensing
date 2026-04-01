@@ -113,28 +113,28 @@ sensing_stations:
 # Add one entry per physical holder installed in the workspace.
 sample_holders:
   - holder_id: "holder-1"
-    origin_xyz: [225.0, 75.0, 52.0]
+    origin_xyz: [183.25, 67.62, 52.0]
     col_spacing_mm: 11.5         # spacing between the 5 columns
     row_spacing_mm: 5.75         # spacing between the 18 rows
     n_cols: 5
     n_rows: 18
-    pick_z_mm: 2.0               # Z (mm) to descend to for pick/place
+    pick_z_mm: 40.0               # Z (mm) to descend to for pick/place
 
   - holder_id: "holder-2"
-    origin_xyz: [150.0, 75.0, 52.0]  # placeholder — calibrate before use
+    origin_xyz: [108.25, 67.62, 52.0]  # placeholder — calibrate before use
     col_spacing_mm: 11.5
     row_spacing_mm: 5.75
     n_cols: 5
     n_rows: 18
-    pick_z_mm: 2.0
+    pick_z_mm: 40.0
 
   - holder_id: "holder-3"
-    origin_xyz: [225.0, -75.0, 52.0]  # placeholder
+    origin_xyz: [183.25, -82.38, 52.0]  # placeholder
     col_spacing_mm: 11.5
     row_spacing_mm: 5.75
     n_cols: 5
     n_rows: 18
-    pick_z_mm: 2.0
+    pick_z_mm: 40.0
 
 # ── Legacy sample rack (large white rack from legacy C9 setup) ────────────────
 # One configurable-origin grid of 11 cols × 8 rows at Z = 44 mm.
@@ -185,7 +185,7 @@ fluidic_pump_controller:
     dose_pump_index: 1
     prime_volume_ml: 1.0        # volume to prime/flush the dose line
     dose_volume_ml: 0.2         # fixed per-well dispense volume
-    flow_rate: 0.05             # ml/s for all stepper pump calls
+    flow_rate: 0.04             # ml/s for all stepper pump calls
     waste_xyz: [-250.0, 0.0, 50.0] # placeholder — robot XYZ for pipette priming over waste
 
 # ── Test cell ─────────────────────────────────────────────────────────────────
