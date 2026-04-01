@@ -74,21 +74,21 @@ robot:
 sensing_stations:
   - id: "sensing-station-1"
     board_id: "board-1"          # cross-reference to boards[] entry above
-    origin_xyz: [98.1, 223.25, 52.0]
+    origin_xyz: [171.9, 256.75, 52.0]
     col_spacing_mm: 30.0         # spacing between the 2 columns
     row_spacing_mm: -15.0         # spacing between the 8 rows
     pick_z_mm: 52.0               # Z (mm) to descend to for pick/place and pipette dispensing
 
   - id: "sensing-station-2"
     board_id: "board-2"
-    origin_xyz: [23.1, 260.75, 52.0]  # placeholder — calibrate before use
+    origin_xyz: [96.9, 294.75, 52.0]  # placeholder — calibrate before use
     col_spacing_mm: 30.0
     row_spacing_mm: -15.0
     pick_z_mm: 52.0
 
   - id: "sensing-station-3"
     board_id: "board-3"
-    origin_xyz: [-51.9, 223.25, 52.0]  # placeholder
+    origin_xyz: [21.9, 256.75, 52.0]  # placeholder
     col_spacing_mm: 30.0
     row_spacing_mm: -15.0
     pick_z_mm: 52.0
