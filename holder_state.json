@@ -11,29 +11,131 @@
     "  col         : 0-indexed column (0..4 for a 5-column holder)",
     "  row         : 0-indexed row    (0..17 for an 18-row holder)",
     "  state       : FRESH | EMPTY | USED | CLEAN",
-    "  sample_type : free string identifying the sample (e.g. 'nickel_100ppm')",
+    "  sample_type : free string identifying the sample (e.g. 'PC', 'Ni')",
     "  sample_id   : unique ID — convention: '{holder_id}_c{col:02d}_r{row:02d}'",
     "",
     "FRESH  = new, unused sample present",
     "EMPTY  = no sample present",
     "USED   = sample returned after experiment (needs cleaning)",
-    "CLEAN  = cleaned slot, ready for reuse"
+    "CLEAN  = cleaned slot, ready for reuse",
+    "",
+    "Layout for demo experiment (demo-20260331-dye-mixture-spectral-ni-ecell):",
+    "  holder-1 : 30 PC samples — rows 0-5, all 5 cols (30 slots)",
+    "  holder-2 : 30 PC samples — rows 0-5, all 5 cols (30 slots)",
+    "  holder-3 : 20 PC samples — rows 0-3, all 5 cols",
+    "           +  8 Ni samples — rows 4-5, cols 0-3",
+    "  Total    : 80 PC + 8 Ni = 88 samples"
   ],
 
   "holder-1": [
-    {"col": 0, "row": 0,  "state": "FRESH", "sample_type": "nickel_0ppm",   "sample_id": "holder-1_c00_r00"},
-    {"col": 1, "row": 0,  "state": "FRESH", "sample_type": "nickel_0ppm",   "sample_id": "holder-1_c01_r00"},
-    {"col": 2, "row": 0,  "state": "FRESH", "sample_type": "nickel_0ppm",   "sample_id": "holder-1_c02_r00"},
-    {"col": 3, "row": 0,  "state": "FRESH", "sample_type": "nickel_0ppm",   "sample_id": "holder-1_c03_r00"},
+    {"col": 0, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c00_r00"},
+    {"col": 1, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c01_r00"},
+    {"col": 2, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c02_r00"},
+    {"col": 3, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c03_r00"},
+    {"col": 4, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c04_r00"},
 
-    {"col": 0, "row": 1,  "state": "FRESH", "sample_type": "nickel_50ppm",  "sample_id": "holder-1_c00_r01"},
-    {"col": 1, "row": 1,  "state": "FRESH", "sample_type": "nickel_50ppm",  "sample_id": "holder-1_c01_r01"},
-    {"col": 2, "row": 1,  "state": "FRESH", "sample_type": "nickel_50ppm",  "sample_id": "holder-1_c02_r01"},
-    {"col": 3, "row": 1,  "state": "FRESH", "sample_type": "nickel_50ppm",  "sample_id": "holder-1_c03_r01"},
+    {"col": 0, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c00_r01"},
+    {"col": 1, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c01_r01"},
+    {"col": 2, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c02_r01"},
+    {"col": 3, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c03_r01"},
+    {"col": 4, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c04_r01"},
 
-    {"col": 0, "row": 2,  "state": "FRESH", "sample_type": "nickel_100ppm", "sample_id": "holder-1_c00_r02"},
-    {"col": 1, "row": 2,  "state": "FRESH", "sample_type": "nickel_100ppm", "sample_id": "holder-1_c01_r02"},
-    {"col": 2, "row": 2,  "state": "FRESH", "sample_type": "nickel_100ppm", "sample_id": "holder-1_c02_r02"},
-    {"col": 3, "row": 2,  "state": "FRESH", "sample_type": "nickel_100ppm", "sample_id": "holder-1_c03_r02"}
+    {"col": 0, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c00_r02"},
+    {"col": 1, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c01_r02"},
+    {"col": 2, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c02_r02"},
+    {"col": 3, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c03_r02"},
+    {"col": 4, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c04_r02"},
+
+    {"col": 0, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c00_r03"},
+    {"col": 1, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c01_r03"},
+    {"col": 2, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c02_r03"},
+    {"col": 3, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c03_r03"},
+    {"col": 4, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c04_r03"},
+
+    {"col": 0, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c00_r04"},
+    {"col": 1, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c01_r04"},
+    {"col": 2, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c02_r04"},
+    {"col": 3, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c03_r04"},
+    {"col": 4, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c04_r04"},
+
+    {"col": 0, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c00_r05"},
+    {"col": 1, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c01_r05"},
+    {"col": 2, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c02_r05"},
+    {"col": 3, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c03_r05"},
+    {"col": 4, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-1_c04_r05"}
+  ],
+
+  "holder-2": [
+    {"col": 0, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c00_r00"},
+    {"col": 1, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c01_r00"},
+    {"col": 2, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c02_r00"},
+    {"col": 3, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c03_r00"},
+    {"col": 4, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c04_r00"},
+
+    {"col": 0, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c00_r01"},
+    {"col": 1, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c01_r01"},
+    {"col": 2, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c02_r01"},
+    {"col": 3, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c03_r01"},
+    {"col": 4, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c04_r01"},
+
+    {"col": 0, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c00_r02"},
+    {"col": 1, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c01_r02"},
+    {"col": 2, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c02_r02"},
+    {"col": 3, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c03_r02"},
+    {"col": 4, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c04_r02"},
+
+    {"col": 0, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c00_r03"},
+    {"col": 1, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c01_r03"},
+    {"col": 2, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c02_r03"},
+    {"col": 3, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c03_r03"},
+    {"col": 4, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c04_r03"},
+
+    {"col": 0, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c00_r04"},
+    {"col": 1, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c01_r04"},
+    {"col": 2, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c02_r04"},
+    {"col": 3, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c03_r04"},
+    {"col": 4, "row":  4, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c04_r04"},
+
+    {"col": 0, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c00_r05"},
+    {"col": 1, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c01_r05"},
+    {"col": 2, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c02_r05"},
+    {"col": 3, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c03_r05"},
+    {"col": 4, "row":  5, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-2_c04_r05"}
+  ],
+
+  "holder-3": [
+    {"col": 0, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c00_r00"},
+    {"col": 1, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c01_r00"},
+    {"col": 2, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c02_r00"},
+    {"col": 3, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c03_r00"},
+    {"col": 4, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c04_r00"},
+
+    {"col": 0, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c00_r01"},
+    {"col": 1, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c01_r01"},
+    {"col": 2, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c02_r01"},
+    {"col": 3, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c03_r01"},
+    {"col": 4, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c04_r01"},
+
+    {"col": 0, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c00_r02"},
+    {"col": 1, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c01_r02"},
+    {"col": 2, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c02_r02"},
+    {"col": 3, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c03_r02"},
+    {"col": 4, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c04_r02"},
+
+    {"col": 0, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c00_r03"},
+    {"col": 1, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c01_r03"},
+    {"col": 2, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c02_r03"},
+    {"col": 3, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c03_r03"},
+    {"col": 4, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c04_r03"},
+
+    {"col": 0, "row":  4, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c00_r04"},
+    {"col": 1, "row":  4, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c01_r04"},
+    {"col": 2, "row":  4, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c02_r04"},
+    {"col": 3, "row":  4, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c03_r04"},
+
+    {"col": 0, "row":  5, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c00_r05"},
+    {"col": 1, "row":  5, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c01_r05"},
+    {"col": 2, "row":  5, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c02_r05"},
+    {"col": 3, "row":  5, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c03_r05"}
   ]
 }
