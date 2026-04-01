@@ -185,18 +185,18 @@ peristaltic_pumps:
 #   pump 3: dose pump (through robot end-effector pipette)
 fluidic_pump_controller:
   com_port: "COM13"              # placeholder — update to actual port
-  simulate: true
+  simulate: false
   baud: 115200
   timeout: 60.0
   pipette_offset_mm: 57.25      # gripper-to-pipette-tip distance along last link, XY plane
   mixture:
-    water_pump_index: 0
-    dye1_pump_index: 1
-    dye2_pump_index: 2
-    dose_pump_index: 3
+    water_pump_index: 1
+    dye1_pump_index: 2
+    dye2_pump_index: 3
+    dose_pump_index: 0
     prime_volume_ml: 2.0        # volume to prime/flush the dose line
     dose_volume_ml: 0.2         # fixed per-well dispense volume
-    flow_rate: 0.05             # ml/s for all stepper pump calls
+    flow_rate: 0.2              # ml/s for all stepper pump calls
     waste_xyz: [-250.0, 0.0, 50.0] # placeholder — robot XYZ for pipette priming over waste
 
 # ── Test cell ─────────────────────────────────────────────────────────────────
