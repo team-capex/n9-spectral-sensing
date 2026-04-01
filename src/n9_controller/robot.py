@@ -544,6 +544,19 @@ class N9RobotController:
         """Move Z to safe travel height."""
         self.move_z(self.safe_travel_z_mm)
 
+    def link2_angle(self, x: float, y: float) -> float:
+        """
+        Angle (radians) of the second arm link (elbow → gripper) in the robot
+        workspace when the gripper is at (x, y).
+
+        In robot workspace the link-2 direction unit vector is (-sin(φ), cos(φ))
+        where φ = shoulder_rad + elbow_rad from inverse kinematics.
+
+        Pure math — safe to call in both simulate and real modes.
+        """
+        _, elbow_rad, shoulder_rad = _ik(x, y)
+        return shoulder_rad + elbow_rad
+
     def home_after_move(self) -> None:
         """
         Two-step homing to correct robot drift after every high-level move.

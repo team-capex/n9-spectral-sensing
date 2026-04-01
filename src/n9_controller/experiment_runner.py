@@ -893,21 +893,24 @@ class ExperimentRunner:
         """
         Return the gripper XY to command so the pipette tip lands at (target_x, target_y).
 
-        The pipette is offset pipette_offset_mm along the last kinematic link in the XY
-        plane. For a revolute arm reaching outward, this axis approximates the unit vector
-        from the robot origin (0, 0) to the target. The gripper is commanded further from
-        the origin so the pipette tip ends up at the target.
+        The pipette is mounted 57.25 mm beyond the gripper along the elbow link (L2).
+        In robot workspace coordinates, the elbow link direction unit vector is
+        (-sin(φ), cos(φ)) where φ = shoulder_rad + elbow_rad from IK.
 
-        Verify the sign against physical setup (simulate=true) before first use —
-        invert if the pipette is mounted on the opposite side of the gripper.
+        To place the pipette tip at (target_x, target_y):
+            gripper_x = target_x + offset * sin(φ)
+            gripper_y = target_y - offset * cos(φ)
+
+        Since φ depends on the gripper position we solve iteratively (converges in 2–3 steps).
         """
         import math
         offset = float(self._fluidic_cfg.get("pipette_offset_mm", 57.25))
-        dist = math.hypot(target_x, target_y)
-        if dist < 1e-6:
-            return target_x, target_y
-        ux, uy = target_x / dist, target_y / dist
-        return target_x - offset * ux, target_y - offset * uy
+        cx, cy = target_x, target_y   # initial estimate: gripper at target
+        for _ in range(3):
+            phi = self.robot.link2_angle(cx, cy)
+            cx = target_x + offset * math.sin(phi)
+            cy = target_y - offset * math.cos(phi)
+        return cx, cy
 
     # ── Background scanning loop ───────────────────────────────────────────────
 
