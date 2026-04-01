@@ -69,10 +69,6 @@ scanning:
   total_duration_hours: 0
   temperature_control: false
 
-# Informational only — actual dye dispense is done by the stepper pump (add_mixture_to_pcb).
-dispense:
-  volume_ul: 200.0                  # 0.2 ml = 200 ul
-
 # Legacy test_cell_experiment — not used in this demo.
 test_cell_experiment:
   enabled: false

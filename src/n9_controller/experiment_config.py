@@ -30,7 +30,6 @@ VALID_STEPS: frozenset[str] = frozenset({
     "load_samples_to_pcb",
     "load_from_legacy_rack_to_pcb",
     "load_from_sample_holders_to_pcb",
-    "dispense_dye_to_pcb",
     "create_mixture",
     "prime_mixture",
     "add_mixture_to_pcb",
@@ -63,12 +62,6 @@ class ScanningConfig:
     interval_minutes: float     # time between successive full board scans (0 = continuous)
     total_duration_hours: float # total colour experiment duration (0 = until stopped)
     temperature_control: bool = False  # True = wait for boards to reach target temp
-
-
-@dataclass(frozen=True)
-class DispenseConfig:
-    """Dye dispense settings."""
-    volume_ul: float            # volume per well in microlitres
 
 
 @dataclass(frozen=True)
@@ -122,7 +115,6 @@ class ExperimentConfig:
         load_samples_to_pcb
         load_from_legacy_rack_to_pcb
         load_from_sample_holders_to_pcb
-        dispense_dye_to_pcb
         create_mixture
         prime_mixture
         add_mixture_to_pcb
@@ -142,7 +134,6 @@ class ExperimentConfig:
     legacy_racks: list[str]             # legacy rack ids from config.yaml
     samples: list[SampleSpec]
     scanning: ScanningConfig
-    dispense: DispenseConfig
     test_cell_experiment: TestCellConfig
     test_cell_demo: Optional[TestCellDemoConfig]
     steps: list[str]
@@ -212,12 +203,6 @@ def load_experiment(path: str) -> ExperimentConfig:
         temperature_control=bool(sc.get("temperature_control", False)),
     )
 
-    # Dispense
-    dc = raw.get("dispense", {})
-    dispense = DispenseConfig(
-        volume_ul=float(dc.get("volume_ul", 50.0)),
-    )
-
     # Test cell
     tc = raw.get("test_cell_experiment", {})
     tc_samples = [
@@ -284,7 +269,6 @@ def load_experiment(path: str) -> ExperimentConfig:
         legacy_racks=legacy_racks,
         samples=samples,
         scanning=scanning,
-        dispense=dispense,
         test_cell_experiment=test_cell,
         test_cell_demo=test_cell_demo,
         steps=steps,

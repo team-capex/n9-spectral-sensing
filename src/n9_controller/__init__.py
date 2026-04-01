@@ -7,7 +7,6 @@ the spectral_board_manager package to run autonomous multi-day experiments.
 Key classes:
     N9RobotController     - wraps the 'north' API (robot.py)
     PumpController        - peristaltic pump and digital output control (pump_controller.py)
-    LiquidDispenser       - placeholder for dispenser hardware (dispenser.py)
     CoordinateMap         - converts grid positions to robot XYZ (coordinate_map.py)
     LegacySampleRackLayout - layout for the legacy white sample rack
     ExperimentState       - state machines for PCB/holder/rack tracking (state_machine.py)
@@ -17,7 +16,6 @@ Key classes:
 
 from n9_controller.coordinate_map import CoordinateMap, LegacySampleRackLayout
 from n9_controller.robot import N9RobotController
-from n9_controller.dispenser import LiquidDispenser
 from n9_controller.pump_controller import PumpController
 from n9_controller.state_machine import (
     ExperimentState,
@@ -37,7 +35,6 @@ __all__ = [
     "LegacySampleRackLayout",
     "N9RobotController",
     "PumpController",
-    "LiquidDispenser",
     "ExperimentState",
     "PCBSensorState",
     "HolderSlotState",

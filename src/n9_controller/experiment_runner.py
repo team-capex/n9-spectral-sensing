@@ -3,7 +3,7 @@ experiment_runner.py
 ====================
 Orchestrates the full experiment workflow, coordinating:
   - N9 robot pick/place moves
-  - Liquid dispenser
+  - Stepper pump dye mixing and pipette dispensing
   - Periodic colour scanning (background thread)
   - Test-cell experiments (placeholder)
   - State machine updates + JSON persistence
@@ -29,7 +29,6 @@ from typing import Optional
 import yaml
 
 from n9_controller.coordinate_map import CoordinateMap
-from n9_controller.dispenser import LiquidDispenser
 from n9_controller.experiment_config import ExperimentConfig, load_experiment
 from n9_controller.pump_controller import PumpController
 from n9_controller.robot import N9RobotController
@@ -97,12 +96,6 @@ class ExperimentRunner:
             velocity=int(robot_cfg["velocity"]) if "velocity" in robot_cfg else None,
             acceleration=int(robot_cfg["acceleration"]) if "acceleration" in robot_cfg else None,
             home_interval=int(robot_cfg.get("home_interval", 1)),
-        )
-
-        dispenser_cfg = self._raw_cfg.get("dispenser", {})
-        self.dispenser = LiquidDispenser(
-            simulate=bool(dispenser_cfg.get("simulate", True)),
-            config=dispenser_cfg,
         )
 
         self.coord_map = CoordinateMap.from_config(self._raw_cfg)
@@ -211,9 +204,8 @@ class ExperimentRunner:
     # ── Step implementations ──────────────────────────────────────────────────
 
     def home_robot(self) -> None:
-        """Home the robot and dispenser."""
+        """Home the robot."""
         self.robot.home()
-        self.dispenser.home_dispenser()
 
     def load_from_sample_holders_to_pcb(self) -> None:
         """Alias for load_samples_to_pcb — loads samples from sample holders into PCB slots."""
@@ -309,7 +301,7 @@ class ExperimentRunner:
         for station_id in self.exp_cfg.sensing_stations:
             for row in range(8):
                 for col in range(2):
-                    dispense_xyz = self.coord_map.pcb_dispense_xyz(station_id, col, row)
+                    dispense_xyz = self.coord_map.pcb_sensor_xyz(station_id, col, row)
                     cx, cy = self._pipette_correction(dispense_xyz[0], dispense_xyz[1])
                     logger.info(
                         "add_mixture_to_pcb: %s col=%d row=%d → "
@@ -398,34 +390,6 @@ class ExperimentRunner:
                     dye_type=spec.dye_type,
                 )
                 self.state.save(self._state_dir)
-
-    def dispense_dye_to_pcb(self) -> None:
-        """
-        Dispense dye to all PCB slots in DYE_FILLED state.
-        After dispensing, transitions the slot to EXPERIMENT_RUNNING.
-        """
-        self.dispenser.prime(self.exp_cfg.samples[0].dye_type if self.exp_cfg.samples else "")
-
-        for rec in list(self.state.pcb_sensors.values()):
-            if rec.state != PCBSensorState.DYE_FILLED:
-                continue
-
-            xyz = self.coord_map.pcb_dispense_xyz(rec.pcb_id, rec.col, rec.row)
-            sample = self.state.samples.get(rec.current_sample_id or "")
-            dye = sample.dye_type if sample else ""
-
-            logger.info("  Dispensing '%s' to PCB slot %s", dye, rec.location_key)
-            self.dispenser.dispense(
-                volume_ul=self.exp_cfg.dispense.volume_ul,
-                dye_type=dye,
-                x=xyz[0], y=xyz[1], z=xyz[2],
-            )
-            self.state.save(self._state_dir)
-
-        self.dispenser.flush()
-
-        # Transition all loaded slots to EXPERIMENT_RUNNING
-        self.state.start_all_loaded_experiments()
 
     def load_from_legacy_rack_to_pcb(self) -> None:
         """
@@ -1025,7 +989,6 @@ ExperimentRunner.STEP_MAP = {
     "load_samples_to_pcb":               ExperimentRunner.load_samples_to_pcb,
     "load_from_sample_holders_to_pcb":   ExperimentRunner.load_from_sample_holders_to_pcb,
     "load_from_legacy_rack_to_pcb":      ExperimentRunner.load_from_legacy_rack_to_pcb,
-    "dispense_dye_to_pcb":               ExperimentRunner.dispense_dye_to_pcb,
     "create_mixture":                    ExperimentRunner.create_mixture,
     "prime_mixture":                     ExperimentRunner.prime_mixture,
     "add_mixture_to_pcb":                ExperimentRunner.add_mixture_to_pcb,
