@@ -43,6 +43,14 @@ class SpectralSensor:
 
             if self.ser.isOpen() is False:
                 self.ser.open()
+            else:
+                # Close and reopen to guarantee the Windows USB-serial driver
+                # fires the RTS reset pulse for this board. Without this, the
+                # driver keeps the port open between constructions and the
+                # ESP32 never receives the reset signal on boards 3+.
+                self.ser.close()
+                time.sleep(0.05)
+                self.ser.open()
 
             # Give time for controller to wake up
             time.sleep(2)
