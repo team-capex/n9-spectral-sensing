@@ -231,22 +231,25 @@ class ExperimentRunner:
             logger.warning("create_mixture: no mixture config in experiment.yaml — skipping.")
             return
 
-        water_pump = int(mx_cfg.get("water_pump_index", 0))
-        dye1_pump  = int(mx_cfg.get("dye1_pump_index", 1))
-        dye2_pump  = int(mx_cfg.get("dye2_pump_index", 2))
+        water_pump = int(mx_cfg.get("water_pump_index", 1))
+        dye1_pump  = int(mx_cfg.get("dye1_pump_index", 2))
+        dye2_pump  = int(mx_cfg.get("dye2_pump_index", 3))
         flow_rate  = float(mx_cfg.get("flow_rate", 0.05))
 
+        # Hardware pump numbers are 1-based (pump 1..4). multiStepperPump takes a
+        # positional 4-element list: position 0 = pump 1, position 1 = pump 2, …
+        # Subtract 1 to convert hardware pump number → list index.
         volumes = [0.0, 0.0, 0.0, 0.0]
-        volumes[water_pump] = exp_mx.water_ml
-        volumes[dye1_pump]  = exp_mx.dye1_ml
-        volumes[dye2_pump]  = exp_mx.dye2_ml
+        volumes[water_pump - 1] = exp_mx.water_ml
+        volumes[dye1_pump  - 1] = exp_mx.dye1_ml
+        volumes[dye2_pump  - 1] = exp_mx.dye2_ml
 
         logger.info(
-            "create_mixture: water=%.3f ml (pump %d), dye1=%.3f ml (pump %d), "
-            "dye2=%.3f ml (pump %d), flow=%.3f ml/s",
-            exp_mx.water_ml, water_pump,
-            exp_mx.dye1_ml, dye1_pump,
-            exp_mx.dye2_ml, dye2_pump,
+            "create_mixture: water=%.3f ml (pump %d→pos %d), dye1=%.3f ml (pump %d→pos %d), "
+            "dye2=%.3f ml (pump %d→pos %d), flow=%.3f ml/s",
+            exp_mx.water_ml, water_pump, water_pump - 1,
+            exp_mx.dye1_ml,  dye1_pump,  dye1_pump  - 1,
+            exp_mx.dye2_ml,  dye2_pump,  dye2_pump  - 1,
             flow_rate,
         )
         self.fluidic_pump_ctrl.multi_stepper_pump(volumes, flow_rate=flow_rate)
@@ -263,8 +266,8 @@ class ExperimentRunner:
             logger.warning("prime_mixture: no mixture config — skipping.")
             return
 
-        waste_xyz  = tuple(mx_cfg.get("waste_xyz", [0.0, 0.0, 50.0]))
-        dose_pump  = int(mx_cfg.get("dose_pump_index", 3))
+        waste_xyz  = tuple(mx_cfg.get("waste_xyz"))
+        dose_pump  = int(mx_cfg.get("dose_pump_index", 1))
         flow_rate  = float(mx_cfg.get("flow_rate", 0.05))
 
         cx, cy = self._pipette_correction(waste_xyz[0], waste_xyz[1])
@@ -276,11 +279,12 @@ class ExperimentRunner:
         self.robot.move_xy(cx, cy)
         self.robot.move_z(waste_xyz[2])
 
+        prime_vol = float(mx_cfg.get("prime_volume_ml", 2.0))
         logger.info(
             "prime_mixture: pumping %.3f ml on pump %d (flow=%.3f ml/s)",
-            exp_mx.prime_volume_ml, dose_pump, flow_rate,
+            prime_vol, dose_pump, flow_rate,
         )
-        self.fluidic_pump_ctrl.stepper_pump(dose_pump, exp_mx.prime_volume_ml, flow_rate)
+        self.fluidic_pump_ctrl.stepper_pump(dose_pump, prime_vol, flow_rate)
         self.robot.raise_to_safe()
 
     def add_mixture_to_pcb(self) -> None:
@@ -336,11 +340,12 @@ class ExperimentRunner:
         dose_pump = int(mx_cfg.get("dose_pump_index", 3))
         flow_rate = float(mx_cfg.get("flow_rate", 0.05))
 
+        prime_vol = float(mx_cfg.get("prime_volume_ml", 2.0))
         logger.info(
             "deprime_mixture: reversing pump %d by %.3f ml (flow=%.3f ml/s)",
-            dose_pump, exp_mx.prime_volume_ml, flow_rate,
+            dose_pump, prime_vol, flow_rate,
         )
-        self.fluidic_pump_ctrl.stepper_pump(dose_pump, -exp_mx.prime_volume_ml, flow_rate)
+        self.fluidic_pump_ctrl.stepper_pump(dose_pump, -prime_vol, flow_rate)
 
     def load_samples_to_pcb(self) -> None:
         """

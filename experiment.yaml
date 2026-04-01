@@ -90,10 +90,9 @@ test_cell_demo:
 # Dye mixture recipe — volumes dispensed by the fluidic stepper pump PCB.
 # Calibrate water_ml / dye1_ml / dye2_ml to physical system before use.
 mixture:
-  water_ml: 10.0
+  water_ml: 1.0
   dye1_ml: 0.5
   dye2_ml: 0.5
-  prime_volume_ml: 2.0             # volume pumped to prime the dose line before dispensing
 
 # Ordered list of experiment steps.
 steps:
