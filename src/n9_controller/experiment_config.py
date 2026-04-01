@@ -102,7 +102,6 @@ class MixtureConfig:
     water_ml: float
     dye1_ml: float
     dye2_ml: float
-    prime_volume_ml: float
     dose_volume_ml: float = 0.2     # fixed per-well dispense volume (ml)
 
 
@@ -274,7 +273,6 @@ def load_experiment(path: str) -> ExperimentConfig:
             water_ml=float(mx["water_ml"]),
             dye1_ml=float(mx["dye1_ml"]),
             dye2_ml=float(mx["dye2_ml"]),
-            prime_volume_ml=float(mx["prime_volume_ml"]),
             dose_volume_ml=float(mx.get("dose_volume_ml", 0.2)),
         )
 
