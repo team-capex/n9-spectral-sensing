@@ -172,17 +172,14 @@ peristaltic_pumps:
 
 # ── Fluidic pump controller (ESP32 stepper pump PCB) ─────────────────────────
 # Controls 4 stepper pumps for dye mixing and dispensing via robot end effector.
-# Pump assignments:
-#   pump 0: water / diluent
-#   pump 1: dye 1
-#   pump 2: dye 2
-#   pump 3: dose pump (through robot end-effector pipette)
 fluidic_pump_controller:
   com_port: "COM13"              # placeholder — update to actual port
   simulate: false
   baud: 115200
   timeout: 60.0
-  pipette_offset_mm: 59.5      # gripper-to-pipette-tip distance along last link, XY plane
+  pipette_offset_mm: 60.0        # gripper-to-pipette-tip distance along last link, XY plane
+  pipette_x_correction_mm: 2.0  # fixed X position correction for PCB pipette targets (mm)
+  pipette_y_correction_mm: 0.0  # fixed Y position correction for PCB pipette targets (mm)
   mixture:
     water_pump_index: 2
     dye1_pump_index: 3

@@ -303,6 +303,8 @@ class ExperimentRunner:
         dose_vol  = float(mx_cfg.get("dose_volume_ml", 0.2))
         flow_rate = float(mx_cfg.get("flow_rate", 0.05))
         offset    = float(self._fluidic_cfg.get("pipette_offset_mm", 57.25))
+        x_corr    = float(self._fluidic_cfg.get("pipette_x_correction_mm", 0.0))
+        y_corr    = float(self._fluidic_cfg.get("pipette_y_correction_mm", 0.0))
         total_wells = 0
 
         for station_id in self.exp_cfg.sensing_stations:
@@ -313,9 +315,9 @@ class ExperimentRunner:
                         "add_mixture_to_pcb: %s col=%d row=%d → "
                         "pipette tip (%.2f, %.2f, %.2f)",
                         station_id, col, row,
-                        dispense_xyz[0], dispense_xyz[1], dispense_xyz[2],
+                        dispense_xyz[0] + x_corr, dispense_xyz[1] + y_corr, dispense_xyz[2],
                     )
-                    self.robot.move_xy_pipette(dispense_xyz[0], dispense_xyz[1], offset)
+                    self.robot.move_xy_pipette(dispense_xyz[0] + x_corr, dispense_xyz[1] + y_corr, offset)
                     self.robot.move_z(dispense_xyz[2])
                     self.fluidic_pump_ctrl.stepper_pump(dose_pump, dose_vol, flow_rate)
                     total_wells += 1
