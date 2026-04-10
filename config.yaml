@@ -123,7 +123,7 @@ sample_holders:
     row_spacing_mm: 5.75         # spacing between the 18 rows
     n_cols: 5
     n_rows: 18
-    pick_z_mm: 44.0               # Z (mm) to descend to for pick/place
+    pick_z_mm: 40.0               # Z (mm) to descend to for pick/place
 
   - holder_id: "holder-2"
     origin_xyz: [108.25, 67.62, 52.0]  # placeholder — calibrate before use
@@ -131,7 +131,7 @@ sample_holders:
     row_spacing_mm: 5.75
     n_cols: 5
     n_rows: 18
-    pick_z_mm: 44.0
+    pick_z_mm: 40.0
 
   - holder_id: "holder-3"
     origin_xyz: [183.25, -82.38, 52.0]  # placeholder
@@ -139,7 +139,7 @@ sample_holders:
     row_spacing_mm: 5.75
     n_cols: 5
     n_rows: 18
-    pick_z_mm: 44.0
+    pick_z_mm: 40.0
 
 # ── Legacy sample rack (large white rack from legacy C9 setup) ────────────────
 # One configurable-origin grid of 11 cols × 8 rows at Z = 44 mm.
