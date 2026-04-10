@@ -4,7 +4,7 @@ data_dir: "data"
 PCBs:
   - board_id: "board-1"
     com_port: "COM11"
-    sensors_in_use: 16           # 1,2..16
+    sensors_in_use: 16           # 1..16
     sensor_settings:
       gain: 64                    # 1,2,4,8
       atime: 255                  # 0..255
