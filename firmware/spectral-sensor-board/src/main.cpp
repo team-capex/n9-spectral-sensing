@@ -60,14 +60,16 @@ int req_index, req_gain, req_atime, req_astep;
 float req_power, req_voltage, req_current;
 
 // ── PID temperature control ──────────────────────────────────────────────────
-constexpr float PID_KP           = 8.0f;
+constexpr float PID_KP           = 10.0f;
 constexpr float PID_KI           = 0.05f;
 constexpr float PID_KD           = 0.5f;
-constexpr float PID_DT_MS        = 500.0f;   // update interval (ms)
+constexpr float PID_DT_MS        = 1000.0f;   // update interval (ms)
 constexpr float PID_OUT_MIN      = 0.0f;     // heaters cannot cool
-constexpr float PID_OUT_MAX      = 100.0f;
+float PID_OUT_MAX = 50.0f;    // Keep low - heaters get HOT!
 // Anti-windup: clamp integral so KI*integral alone cannot exceed output limits
-constexpr float PID_INTEGRAL_MAX = PID_OUT_MAX / PID_KI;
+float PID_INTEGRAL_MAX = PID_OUT_MAX;
+
+int TEMP_PROBE_PIN = 5;
 
 float         pid_target   = NAN;
 float         pid_integral = 0.0f;
@@ -113,7 +115,7 @@ void setup() {
   Serial.println("wakeAll()");
 
   Serial.println("getTemperature(int pin)");
-  Serial.println("setTemperatureTarget(float celsius)");
+  Serial.println("setTemperatureTarget(float celsius, float max_power, int sensor_pin)");
   Serial.println("clearTemperatureTarget()");
   Serial.println("# Ready!");
 }
@@ -189,11 +191,15 @@ void loop() {
       Serial.println(getProbeTemp(req_index));
     }
     else if (action == "setTemperatureTarget") {
-      float target  = Serial.readStringUntil(')').toFloat();
+      float target  = Serial.readStringUntil(',').toFloat();
+      PID_OUT_MAX = Serial.readStringUntil(',').toFloat();
+      TEMP_PROBE_PIN = Serial.readStringUntil(')').toInt();
+
       pid_target    = target;
       pid_integral  = 0.0f;   // reset integral on new setpoint
       pid_prev_err  = 0.0f;
       pid_last_ms   = millis();
+      PID_INTEGRAL_MAX = PID_OUT_MAX;
       Serial.println("#");
     }
     else if (action == "clearTemperatureTarget") {
@@ -266,7 +272,8 @@ void pid_step() {
     pid_last_ms = now;
 
     // Read NTC pins 1 and 2 directly to avoid Serial side-effects from getProbeTemp()
-    float avg_temp = (temperature_c(analogRead(1)) + temperature_c(analogRead(2))) * 0.5f;
+    //float avg_temp = (temperature_c(analogRead(1)) + temperature_c(analogRead(2))) * 0.5f;
+    float avg_temp = temperature_c(analogRead(TEMP_PROBE_PIN));
 
     float error      = pid_target - avg_temp;
     pid_integral    += error * dt;
