@@ -58,9 +58,10 @@ constexpr float Rp = 10000.0f;       // 10k pull-up
 String action;
 int req_index, req_gain, req_atime, req_astep;
 float req_power, req_voltage, req_current;
+int duty = 0;
 
 // ── PID temperature control ──────────────────────────────────────────────────
-constexpr float PID_KP           = 10.0f;
+constexpr float PID_KP           = 20.0f;
 constexpr float PID_KI           = 0.05f;
 constexpr float PID_KD           = 0.5f;
 constexpr float PID_DT_MS        = 1000.0f;   // update interval (ms)
@@ -190,6 +191,10 @@ void loop() {
       req_index = Serial.readStringUntil(')').toInt();
       Serial.println(getProbeTemp(req_index));
     }
+    else if (action == "getDuty") {
+      (void)Serial.readStringUntil(')');
+      Serial.println(duty);
+    }
     else if (action == "setTemperatureTarget") {
       float target  = Serial.readStringUntil(',').toFloat();
       PID_OUT_MAX = Serial.readStringUntil(',').toFloat();
@@ -281,7 +286,7 @@ void pid_step() {
     float derivative = (error - pid_prev_err) / dt;
     pid_prev_err     = error;
 
-    int duty = (int)constrain(
+    duty = (int)constrain(
         PID_KP * error + PID_KI * pid_integral + PID_KD * derivative,
         PID_OUT_MIN, PID_OUT_MAX
     );
