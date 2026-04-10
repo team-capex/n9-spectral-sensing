@@ -36,6 +36,8 @@ class BoardConfig:
     sample_type: str = "liquid"         # "solid" or "liquid"
     control_voltage: float = 0.0        # 0..10
     target_temp_c: float | None = None  # None = heaters off; float = firmware PID target
+    max_power_pct: float = 20.0         # max heater power % (0..100); maps to max_power_% in config.yaml
+    sensor_pin: int = 5                 # NTC thermistor pin used for PID feedback
 
 
 @dataclass(frozen=True)
@@ -62,7 +64,7 @@ class _BoardRuntime:
 
         # Initialise temperature control
         if self.cfg.target_temp_c is not None:
-            self.sensor.set_temperature_target(self.cfg.target_temp_c)
+            self.sensor.set_temperature_target(self.cfg.target_temp_c, self.cfg.max_power_pct, self.cfg.sensor_pin)
         else:
             self.sensor.clear_temperature_target()   # ensures heaters are off at startup
 
@@ -152,12 +154,16 @@ class _BoardRuntime:
     def close(self) -> None:
         """
         Make a best effort to return to safe state and close serial.
+        Heaters are always cleared before closing, regardless of any exception.
         """
+        try:
+            self.sensor.clear_temperature_target()
+        except Exception:
+            pass
         try:
             self._safe_set_voltage(0.0)
         except Exception:
             pass
-
         self.sensor.close_ser()
 
 
@@ -231,6 +237,8 @@ class BoardManager:
                     sample_type=str(b.get("sample_type", "liquid")),
                     control_voltage=float(b.get("control_voltage", 0.0)),
                     target_temp_c=float(b["target_temp_c"]) if b.get("target_temp_c") is not None else None,
+                    max_power_pct=float(b.get("max_power_%", 20.0)),
+                    sensor_pin=int(b.get("sensor_pin", 5)),
                 )
             )
 
@@ -250,6 +258,9 @@ class BoardManager:
             st = (bc.sample_type or "liquid").strip().lower()
             if st not in ("solid", "liquid"):
                 raise ValueError(f"{bc.board_id}: sample_type must be 'solid' or 'liquid'")
+
+            if not (0.0 < bc.max_power_pct <= 100.0):
+                raise ValueError(f"{bc.board_id}: max_power_% must be >0 and <=100")
 
         return ManagerConfig(data_dir=data_dir, boards=boards)
 
@@ -297,7 +308,7 @@ class BoardManager:
         self,
         tolerance_c: float = 1.0,
         poll_interval_s: float = 5.0,
-        timeout_s: float = 600.0,
+        timeout_s: float = 1000.0,
     ) -> None:
         """Wait (in parallel) for all boards with a target_temp_c to reach it."""
         if not self._boards:

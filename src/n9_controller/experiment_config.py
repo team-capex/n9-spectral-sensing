@@ -38,6 +38,7 @@ VALID_STEPS: frozenset[str] = frozenset({
     "run_test_cell_experiments",
     "run_ni_test_cell_loop",
     "wait_for_colour_scanning",
+    "wait_for_pcb_temperature",
     "post_colour_test_cell",
     "return_all_to_holder",
     "report_cleaning_needed",

@@ -161,9 +161,9 @@ class SpectralSensor:
         return (t1 + t2) / 2.0
 
     @skip_if_sim()
-    def set_temperature_target(self, target_c: float) -> None:
+    def set_temperature_target(self, target_c: float, max_power: float = 20, sensor_pin: int = 5) -> None:
         """Send PID temperature target to firmware (resets integral on device)."""
-        self.ser.write(f"setTemperatureTarget({target_c:.2f})".encode())
+        self.ser.write(f"setTemperatureTarget({target_c:.2f},{max_power:.2f},{sensor_pin})".encode())
         self.check_response()
 
     @skip_if_sim()

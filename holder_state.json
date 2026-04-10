@@ -19,12 +19,8 @@
     "USED   = sample returned after experiment (needs cleaning)",
     "CLEAN  = cleaned slot, ready for reuse",
     "",
-    "Layout for demo experiment (demo-20260331-dye-mixture-spectral-ni-ecell):",
-    "  holder-1 : 30 PC samples — rows 0-5, all 5 cols (30 slots)",
-    "  holder-2 : 30 PC samples — rows 0-5, all 5 cols (30 slots)",
-    "  holder-3 : 20 PC samples — rows 0-3, all 5 cols",
-    "           +  8 Ni samples — rows 4-5, cols 0-3",
-    "  Total    : 80 PC + 8 Ni = 88 samples"
+    "Layout for pc-scan-holder3-20260410:",
+    "  holder-3 : 10 PC samples — locations 5-14 (col4_r0; cols0-4_r1; cols0-3_r2)"
   ],
 
   "holder-1": [
@@ -104,10 +100,6 @@
   ],
 
   "holder-3": [
-    {"col": 0, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c00_r00"},
-    {"col": 1, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c01_r00"},
-    {"col": 2, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c02_r00"},
-    {"col": 3, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c03_r00"},
     {"col": 4, "row":  0, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c04_r00"},
 
     {"col": 0, "row":  1, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c00_r01"},
@@ -119,23 +111,6 @@
     {"col": 0, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c00_r02"},
     {"col": 1, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c01_r02"},
     {"col": 2, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c02_r02"},
-    {"col": 3, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c03_r02"},
-    {"col": 4, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c04_r02"},
-
-    {"col": 0, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c00_r03"},
-    {"col": 1, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c01_r03"},
-    {"col": 2, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c02_r03"},
-    {"col": 3, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c03_r03"},
-    {"col": 4, "row":  3, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c04_r03"},
-
-    {"col": 0, "row":  4, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c00_r04"},
-    {"col": 1, "row":  4, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c01_r04"},
-    {"col": 2, "row":  4, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c02_r04"},
-    {"col": 3, "row":  4, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c03_r04"},
-
-    {"col": 0, "row":  5, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c00_r05"},
-    {"col": 1, "row":  5, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c01_r05"},
-    {"col": 2, "row":  5, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c02_r05"},
-    {"col": 3, "row":  5, "state": "FRESH", "sample_type": "Ni", "sample_id": "holder-3_c03_r05"}
+    {"col": 3, "row":  2, "state": "FRESH", "sample_type": "PC", "sample_id": "holder-3_c03_r02"}
   ]
 }

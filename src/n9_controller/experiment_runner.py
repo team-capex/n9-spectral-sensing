@@ -206,6 +206,10 @@ class ExperimentRunner:
                     "return_to_joint_zero failed during cleanup — skipping.", exc_info=True
                 )
             self.board_manager.disable_control_voltage()
+            try:
+                self.board_manager.close()
+            except Exception as exc:
+                logger.warning("board_manager.close() failed during run() cleanup: %s", exc)
 
     # ── Step implementations ──────────────────────────────────────────────────
 
@@ -586,6 +590,18 @@ class ExperimentRunner:
 
         # Ensure arm is homed after the batch regardless of home_interval
         self.robot.force_home()
+
+    def wait_for_pcb_temperature(self) -> None:
+        """
+        Block until all active sensing-station boards reach their configured
+        target_temp_c (within the default tolerance of 1 °C).
+
+        No-op for boards that have target_temp_c: null in config.yaml.
+        Raises TimeoutError (default 600 s) if any board does not reach target.
+        """
+        logger.info("Waiting for PCB boards to reach target temperature ...")
+        self.board_manager.wait_for_temperature()
+        logger.info("All PCB boards at target temperature.")
 
     def start_colour_scanning(self) -> None:
         """
@@ -992,6 +1008,7 @@ ExperimentRunner.STEP_MAP = {
     "run_test_cell_experiments":         ExperimentRunner.run_test_cell_experiments,
     "run_ni_test_cell_loop":             ExperimentRunner.run_ni_test_cell_loop,
     "wait_for_colour_scanning":          ExperimentRunner.wait_for_colour_scanning,
+    "wait_for_pcb_temperature":          ExperimentRunner.wait_for_pcb_temperature,
     "post_colour_test_cell":             ExperimentRunner.post_colour_test_cell,
     "return_all_to_holder":              ExperimentRunner.return_all_to_holder,
     "report_cleaning_needed":            ExperimentRunner.report_cleaning_needed,
