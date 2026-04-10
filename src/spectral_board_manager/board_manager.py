@@ -36,7 +36,7 @@ class BoardConfig:
     sample_type: str = "liquid"         # "solid" or "liquid"
     control_voltage: float = 0.0        # 0..10
     target_temp_c: float | None = None  # None = heaters off; float = firmware PID target
-    max_power_pct: float = 20.0         # max heater power % (0..100); maps to max_power_% in config.yaml
+    max_power_pct: float = 50.0         # max heater power % (0..100); maps to max_power_% in config.yaml
     sensor_pin: int = 5                 # NTC thermistor pin used for PID feedback
 
 
@@ -237,7 +237,7 @@ class BoardManager:
                     sample_type=str(b.get("sample_type", "liquid")),
                     control_voltage=float(b.get("control_voltage", 0.0)),
                     target_temp_c=float(b["target_temp_c"]) if b.get("target_temp_c") is not None else None,
-                    max_power_pct=float(b.get("max_power_%", 20.0)),
+                    max_power_pct=float(b.get("max_power_%", 50.0)),
                     sensor_pin=int(b.get("sensor_pin", 5)),
                 )
             )

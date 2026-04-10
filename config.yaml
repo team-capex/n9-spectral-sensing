@@ -12,7 +12,7 @@ PCBs:
     sample_type: "liquid"        # "solid" or "liquid" (solid => LEDs_ON true)
     control_voltage: 9.0         # 0..10, applied only during run()
     target_temp_c: 40          # float e.g. 37.0 enables firmware PID; null = heaters off
-    max_power_%: 20               # float % power
+    max_power_%: 50               # float % power
     sensor_pin: 5                 # NTC sensor pin input (1, 2, 4 or 5)
 
   - board_id: "board-2"
@@ -25,7 +25,7 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
-    max_power_%: 20     
+    max_power_%: 50     
     sensor_pin: 5
 
   - board_id: "board-3"
@@ -38,7 +38,7 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
-    max_power_%: 20
+    max_power_%: 50
     sensor_pin: 5
 
   - board_id: "board-4"
@@ -51,7 +51,7 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
-    max_power_%: 20
+    max_power_%: 50
     sensor_pin: 5
 
   - board_id: "board-5"
@@ -64,7 +64,7 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
-    max_power_%: 20
+    max_power_%: 50
     sensor_pin: 5
 
 # ── N9 Robot ──────────────────────────────────────────────────────────────────
