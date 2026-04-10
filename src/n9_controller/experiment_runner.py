@@ -320,9 +320,11 @@ class ExperimentRunner:
                     self.robot.move_xy_pipette(dispense_xyz[0] + x_corr, dispense_xyz[1] + y_corr, offset)
                     self.robot.move_z(dispense_xyz[2])
                     self.fluidic_pump_ctrl.stepper_pump(dose_pump, dose_vol, flow_rate)
+                    self.state.fill_pcb_with_dye(station_id, col, row)
                     total_wells += 1
 
         self.robot.raise_to_safe()
+        self.state.save(self._state_dir)
         logger.info("add_mixture_to_pcb: dispensed to %d wells total.", total_wells)
 
     def deprime_mixture(self) -> None:
@@ -599,6 +601,11 @@ class ExperimentRunner:
         # Optionally wait for boards to reach target temperature
         if self.exp_cfg.scanning.temperature_control:
             self.board_manager.wait_for_temperature()
+
+        # Advance all SAMPLE_LOADED slots → EXPERIMENT_RUNNING so that
+        # wait_for_colour_scanning can complete the full lifecycle.
+        self.state.start_all_sample_loaded_experiments()
+        self.state.save(self._state_dir)
 
         self._scan_stop_event = threading.Event()
         self._scan_thread = threading.Thread(

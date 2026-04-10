@@ -4,6 +4,15 @@ This file provides context for Claude Code development sessions. The system is o
 
 ---
 
+## Claude Instructions for each session
+
+- Use project as a human user would: experiment-run CLI to run experiments with real hardware.
+- Do not generate unnecessary, one-off python files for new experiments - use available code where possible.
+- Only define new steps for experiment_runner.py when absolutely necessary.
+- Edit config / json files to perform requested experiments: config.yaml, experiment.yaml, holder_state.json etc. See example_experiment.yaml for a typical experimental setup.
+- Save experiments for future reuse by renaming.
+- Once experiment plan is confirmed and changes made, run the experiment-run command yourself.
+
 ## System Purpose
 
 Automated high-throughput spectral colour characterisation of material samples using:

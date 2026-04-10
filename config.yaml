@@ -3,7 +3,7 @@ data_dir: "data"
 # ── Spectral sensing boards (serial connection to ESP32 PCBs) ─────────────────
 PCBs:
   - board_id: "board-1"
-    com_port: "COM11"
+    com_port: "COM12"
     sensors_in_use: 16           # 1..16
     sensor_settings:
       gain: 64                    # 1,2,4,8
@@ -11,7 +11,9 @@ PCBs:
       astep: 600                  # 0..65535
     sample_type: "liquid"        # "solid" or "liquid" (solid => LEDs_ON true)
     control_voltage: 9.0         # 0..10, applied only during run()
-    target_temp_c: null          # float e.g. 37.0 enables firmware PID; null = heaters off
+    target_temp_c: 40          # float e.g. 37.0 enables firmware PID; null = heaters off
+    max_power_%: 20               # float % power
+    sensor_pin: 5                 # NTC sensor pin input (1, 2, 4 or 5)
 
   - board_id: "board-2"
     com_port: "COM6"            # placeholder — update to actual port
@@ -23,9 +25,11 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
+    max_power_%: 20     
+    sensor_pin: 5
 
   - board_id: "board-3"
-    com_port: "COM12"            # placeholder
+    com_port: "COM11"     
     sensors_in_use: 16
     sensor_settings:
       gain: 64
@@ -34,9 +38,11 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
+    max_power_%: 20
+    sensor_pin: 5
 
   - board_id: "board-4"
-    com_port: "COM14"            # placeholder
+    com_port: "COM9"
     sensors_in_use: 16
     sensor_settings:
       gain: 64
@@ -45,9 +51,11 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
+    max_power_%: 20
+    sensor_pin: 5
 
   - board_id: "board-5"
-    com_port: "COM15"            # placeholder
+    com_port: "COM15"
     sensors_in_use: 16
     sensor_settings:
       gain: 64
@@ -56,6 +64,8 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
+    max_power_%: 20
+    sensor_pin: 5
 
 # ── N9 Robot ──────────────────────────────────────────────────────────────────
 robot:

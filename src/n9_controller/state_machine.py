@@ -42,12 +42,22 @@ _BAK_FILE = "experiment_state.json.bak"
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
 class PCBSensorState(str, Enum):
-    """Lifecycle states for a single sensor well on a PCB board."""
-    EMPTY_CLEAN         = "EMPTY_CLEAN"         # Clean, ready to receive a sample
-    DYE_FILLED          = "DYE_FILLED"           # Sample loaded and dye dispensed; scan not yet started
+    """Lifecycle states for a single sensor well on a PCB board.
+
+    Full lifecycle (dye experiment):
+      EMPTY_CLEAN → DYE_FILLED → SAMPLE_LOADED → EXPERIMENT_RUNNING
+                  → EXPERIMENT_COMPLETE → SAMPLE_REMOVED → EMPTY_DIRTY
+
+    Short lifecycle (no dye):
+      EMPTY_CLEAN → SAMPLE_LOADED → EXPERIMENT_RUNNING
+                  → EXPERIMENT_COMPLETE → SAMPLE_REMOVED → EMPTY_DIRTY
+    """
+    EMPTY_CLEAN         = "EMPTY_CLEAN"         # Clean well, ready to receive dye or a sample directly
+    DYE_FILLED          = "DYE_FILLED"           # Dye dispensed into well; awaiting sample placement
+    SAMPLE_LOADED       = "SAMPLE_LOADED"        # Sample placed in well (dye may or may not be present); ready to scan
     EXPERIMENT_RUNNING  = "EXPERIMENT_RUNNING"   # Actively being colour-scanned
-    EXPERIMENT_COMPLETE = "EXPERIMENT_COMPLETE"  # Scan duration elapsed; sample+dye still present
-    SAMPLE_REMOVED      = "SAMPLE_REMOVED"       # Sample returned to holder; dye residue remains
+    EXPERIMENT_COMPLETE = "EXPERIMENT_COMPLETE"  # Scan duration elapsed; sample still present
+    SAMPLE_REMOVED      = "SAMPLE_REMOVED"       # Sample returned to holder; dye residue may remain
     EMPTY_DIRTY         = "EMPTY_DIRTY"          # All material removed; needs cleaning before reuse
 
 
@@ -351,10 +361,10 @@ class ExperimentState:
     def get_free_pcb_locations(
         self, pcb_id: Optional[str] = None
     ) -> list[PCBSensorRecord]:
-        """Return all EMPTY_CLEAN PCB sensor slots (optionally filtered by pcb_id)."""
+        """Return all PCB sensor slots ready to receive a sample (EMPTY_CLEAN or DYE_FILLED)."""
         return [
             r for r in self.pcb_sensors.values()
-            if r.state == PCBSensorState.EMPTY_CLEAN
+            if r.state in (PCBSensorState.EMPTY_CLEAN, PCBSensorState.DYE_FILLED)
             and (pcb_id is None or r.pcb_id == pcb_id)
         ]
 
@@ -471,17 +481,18 @@ class ExperimentState:
         dye_type: str,
     ) -> None:
         """
-        Record that a sample has been placed on a PCB sensor slot and dye will
-        be (or has been) dispensed. Transitions EMPTY_CLEAN → DYE_FILLED.
+        Record that a sample has been placed into a PCB sensor well.
+        Transitions EMPTY_CLEAN → SAMPLE_LOADED (no dye) or DYE_FILLED → SAMPLE_LOADED (dye present).
         """
         pcb_key = f"{pcb_id}_c{col}_r{row}"
         pcb_rec = self._get_pcb(pcb_key)
         holder_rec = self._find_holder_slot_for_sample(sample_id)
 
-        if pcb_rec.state != PCBSensorState.EMPTY_CLEAN:
+        prior_state = pcb_rec.state
+        if prior_state not in (PCBSensorState.EMPTY_CLEAN, PCBSensorState.DYE_FILLED):
             raise ValueError(
                 f"Cannot load sample: PCB slot {pcb_key} is in state "
-                f"'{pcb_rec.state.value}' (expected EMPTY_CLEAN)."
+                f"'{prior_state.value}' (expected EMPTY_CLEAN or DYE_FILLED)."
             )
 
         # Update holder slot
@@ -491,7 +502,7 @@ class ExperimentState:
         self._sample_to_holder.pop(sample_id, None)
 
         # Update PCB slot
-        pcb_rec.state = PCBSensorState.DYE_FILLED
+        pcb_rec.state = PCBSensorState.SAMPLE_LOADED
         pcb_rec.current_sample_id = sample_id
         pcb_rec.last_updated = _now()
 
@@ -502,30 +513,39 @@ class ExperimentState:
         sample.pcb_col = col
         sample.pcb_row = row
         sample.placed_at = _now()
-        sample.dye_dispensed_at = _now()
+        if prior_state == PCBSensorState.DYE_FILLED:
+            sample.dye_dispensed_at = _now()
 
-    def start_experiment(self, pcb_id: str, col: int, row: int) -> None:
+    def fill_pcb_with_dye(self, pcb_id: str, col: int, row: int) -> None:
         """
-        Mark a PCB slot as actively scanning. Transitions DYE_FILLED → EXPERIMENT_RUNNING.
+        Record that dye has been dispensed into an empty well.
+        Transitions EMPTY_CLEAN → DYE_FILLED.
         """
         key = f"{pcb_id}_c{col}_r{row}"
         rec = self._get_pcb(key)
-        if rec.state != PCBSensorState.DYE_FILLED:
+        if rec.state != PCBSensorState.EMPTY_CLEAN:
+            raise ValueError(
+                f"Cannot fill with dye: {key} is in state '{rec.state.value}' "
+                f"(expected EMPTY_CLEAN)."
+            )
+        rec.state = PCBSensorState.DYE_FILLED
+        rec.last_updated = _now()
+
+    def start_experiment(self, pcb_id: str, col: int, row: int) -> None:
+        """
+        Mark a PCB slot as actively scanning. Transitions SAMPLE_LOADED → EXPERIMENT_RUNNING.
+        """
+        key = f"{pcb_id}_c{col}_r{row}"
+        rec = self._get_pcb(key)
+        if rec.state != PCBSensorState.SAMPLE_LOADED:
             raise ValueError(
                 f"Cannot start experiment: {key} is in state '{rec.state.value}' "
-                f"(expected DYE_FILLED)."
+                f"(expected SAMPLE_LOADED)."
             )
         rec.state = PCBSensorState.EXPERIMENT_RUNNING
         rec.last_updated = _now()
         if rec.current_sample_id:
             self.samples[rec.current_sample_id].scan_started_at = _now()
-
-    def start_all_loaded_experiments(self, pcb_id: Optional[str] = None) -> None:
-        """Convenience: start all DYE_FILLED slots (optionally filtered by pcb_id)."""
-        for rec in self.pcb_sensors.values():
-            if rec.state == PCBSensorState.DYE_FILLED:
-                if pcb_id is None or rec.pcb_id == pcb_id:
-                    self.start_experiment(rec.pcb_id, rec.col, rec.row)
 
     def record_scan(self) -> None:
         """Increment the global scan counter (called once per BoardManager.run())."""
@@ -547,6 +567,13 @@ class ExperimentState:
         rec.last_updated = _now()
         if rec.current_sample_id:
             self.samples[rec.current_sample_id].scan_completed_at = _now()
+
+    def start_all_sample_loaded_experiments(self, pcb_id: Optional[str] = None) -> None:
+        """Convenience: transition all SAMPLE_LOADED slots → EXPERIMENT_RUNNING."""
+        for rec in list(self.pcb_sensors.values()):
+            if rec.state == PCBSensorState.SAMPLE_LOADED:
+                if pcb_id is None or rec.pcb_id == pcb_id:
+                    self.start_experiment(rec.pcb_id, rec.col, rec.row)
 
     def complete_all_running_experiments(self, pcb_id: Optional[str] = None) -> None:
         """Convenience: complete all EXPERIMENT_RUNNING slots."""
