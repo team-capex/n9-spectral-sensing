@@ -152,13 +152,10 @@ class SpectralSensor:
         self.check_response()
 
     @skip_if_sim(default_return=25.0)
-    def get_temperature(self) -> float:
-        """Return average of NTC probes on pins 1 and 2 (°C)."""
-        self.ser.write("getTemperature(1)".encode())
-        t1 = float(self.get_data().strip())
-        self.ser.write("getTemperature(2)".encode())
-        t2 = float(self.get_data().strip())
-        return (t1 + t2) / 2.0
+    def get_temperature(self, sensor_pin: int = 5) -> float:
+        """Return temperature of NTC probe on specified pin (°C)."""
+        self.ser.write(f"getTemperature({sensor_pin})".encode())
+        return float(self.get_data().strip())
 
     @skip_if_sim()
     def set_temperature_target(self, target_c: float, max_power: float = 50, sensor_pin: int = 5) -> None:

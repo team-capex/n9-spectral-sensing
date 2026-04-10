@@ -105,7 +105,7 @@ class _BoardRuntime:
                             sample metadata.  Sensors with no entry get None labels.
         """
         # Read temperature once per scan cycle (25.0 in sim)
-        temp_c = self.sensor.get_temperature()
+        temp_c = self.sensor.get_temperature(self.cfg.sensor_pin)
 
         for i in range(1, self.cfg.sensors_in_use + 1):
             # Get data string from sensor readings
@@ -137,7 +137,7 @@ class _BoardRuntime:
         logging.info("Board %s: waiting for %.1f °C (±%.1f °C) ...",
                      self.cfg.board_id, target, tolerance_c)
         while True:
-            current = self.sensor.get_temperature()
+            current = self.sensor.get_temperature(self.cfg.sensor_pin)
             if abs(current - target) <= tolerance_c:
                 logging.info("Board %s: %.2f °C reached (target %.1f °C).",
                              self.cfg.board_id, current, target)
