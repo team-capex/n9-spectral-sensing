@@ -156,6 +156,12 @@ class SpectralSensor:
         """Return temperature of NTC probe on specified pin (°C)."""
         self.ser.write(f"getTemperature({sensor_pin})".encode())
         return float(self.get_data().strip())
+    
+    @skip_if_sim(default_return=0)
+    def get_duty_pct(self) -> float:
+        """Return current duty of PID loop."""
+        self.ser.write("getDuty()".encode())
+        return float(self.get_data().strip())
 
     @skip_if_sim()
     def set_temperature_target(self, target_c: float, max_power: float = 50, sensor_pin: int = 5) -> None:

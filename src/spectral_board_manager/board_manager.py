@@ -138,6 +138,7 @@ class _BoardRuntime:
                      self.cfg.board_id, target, tolerance_c)
         while True:
             current = self.sensor.get_temperature(self.cfg.sensor_pin)
+            duty = self.sensor.get_duty_pct()
             if abs(current - target) <= tolerance_c:
                 logging.info("Board %s: %.2f °C reached (target %.1f °C).",
                              self.cfg.board_id, current, target)
@@ -147,8 +148,7 @@ class _BoardRuntime:
                     f"Board {self.cfg.board_id}: {target} °C not reached within "
                     f"{timeout_s:.0f} s (current: {current:.2f} °C)."
                 )
-            logging.info("Board %s: %.2f °C → %.1f °C target, polling in %.0f s ...",
-                         self.cfg.board_id, current, target, poll_interval_s)
+            logging.info(f"Board {self.cfg.board_id}: {current} °C → {target} °C target (power = {duty}%)")
             time.sleep(poll_interval_s)
 
     def close(self) -> None:
