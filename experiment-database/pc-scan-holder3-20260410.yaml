@@ -1,0 +1,47 @@
+experiment_id: "pc-scan-holder3-20260410"
+description: >
+  10x PC samples from holder-3 locations 5-14, scanned on sensing-station-1 for 5 minutes.
+  Phase 1: Home robot.
+  Phase 2: Wait for PCB board to reach 40 °C.
+  Phase 3: Load 10 PC samples from holder-3 onto sensing-station-1 (board-1, sensors 1-10).
+  Phase 4: Start continuous spectral scanning for 5 minutes.
+  Phase 5: Wait for scan to complete.
+  Phase 6: Return all samples to their origin slots in holder-3.
+
+sensing_stations:
+  - sensing-station-1
+
+sample_holders:
+  - holder-3
+
+legacy_racks: []
+
+holder_state_path: "holder_state.json"
+legacy_rack_state_path: "legacy_rack_state.json"
+
+samples:
+  - sample_type: "PC"
+    count: 10
+    source: "holder"
+    destination: "pcb"
+
+scanning:
+  interval_minutes: 0
+  total_duration_hours: 0.01
+  temperature_control: true
+
+test_cell_experiment:
+  enabled: false
+  protocol: "placeholder"
+  samples: []
+
+steps:
+  - home_robot
+  - wait_for_pcb_temperature
+  - load_from_sample_holders_to_pcb
+  - start_colour_scanning
+  - wait_for_colour_scanning
+  - return_all_to_holder
+
+output:
+  cleaning_report_path: "data/cleaning_report.txt"

@@ -9,9 +9,16 @@ This file provides context for Claude Code development sessions. The system is o
 - Use project as a human user would: experiment-run CLI to run experiments with real hardware.
 - Do not generate unnecessary, one-off python files for new experiments - use available code where possible.
 - Only define new steps for experiment_runner.py when absolutely necessary.
-- Edit config / json files to perform requested experiments: config.yaml, experiment.yaml, holder_state.json etc. See example_experiment.yaml for a typical experimental setup.
-- Save experiments for future reuse by renaming.
+- Edit config / json files to perform requested experiments: config.yaml, holder_state.json etc. See example_experiment.yaml for a typical experimental setup.
 - Once experiment plan is confirmed and changes made, run the experiment-run command yourself.
+
+### Experiment file naming and storage
+
+- **Never write experiments directly to `experiment.yaml` in the repo root.** That file is the active experiment slot used by the CLI — it gets overwritten each run and is not a permanent record.
+- **Save every new experiment as a named file inside `experiment-database/`**, using a descriptive name that reflects the experiment purpose and date. Example: `experiment-database/pc-scan-holder3-20260410.yaml`.
+- After saving to `experiment-database/`, copy (or symlink) the file to `experiment.yaml` at the repo root so the CLI can run it. Do this by writing `experiment.yaml` as a copy of the database file — not in place of it.
+- Naming convention: `<sample-type>-<brief-purpose>-<YYYYMMDD>.yaml`, e.g. `ni-ecell-dye-mixture-20260415.yaml`.
+- Before creating a new experiment file, check `experiment-database/` for an existing experiment that can be reused or adapted.
 
 ## System Purpose
 
