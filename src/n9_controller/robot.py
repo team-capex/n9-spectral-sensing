@@ -577,8 +577,11 @@ class N9RobotController:
                 "[SIM] move_xy_pipette(x=%.2f, y=%.2f, tool_length=%.2f)",
                 x, y, tool_length,
             )
-            return
-        self._c9.move_arm(x=x, y=y, tool_length=tool_length, wait=True)  # type: ignore[union-attr]
+        else:
+            self._c9.move_arm(x=x, y=y, tool_length=tool_length, wait=True)  # type: ignore[union-attr]
+        self._place_count += 1
+        if self._place_count % self.home_interval == 0:
+            self.home_after_move()
 
     def home_after_move(self) -> None:
         """
