@@ -188,8 +188,8 @@ fluidic_pump_controller:
   baud: 115200
   timeout: 60.0
   pipette_offset_mm: 60.0        # gripper-to-pipette-tip distance along last link, XY plane
-  pipette_x_correction_mm: 2.0  # fixed X position correction for PCB pipette targets (mm)
-  pipette_y_correction_mm: 0.0  # fixed Y position correction for PCB pipette targets (mm)
+  pipette_x_correction_mm: -0.5  # fixed X position correction for PCB pipette targets (mm)
+  pipette_y_correction_mm: 2.2  # fixed Y position correction for PCB pipette targets (mm)
   mixture:
     water_pump_index: 2
     dye1_pump_index: 3

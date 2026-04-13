@@ -35,9 +35,18 @@ test_cell_experiment:
   protocol: "placeholder"
   samples: []
 
+# Dye mixture recipe — volumes dispensed by the fluidic stepper pump PCB.
+# Calibrate water_ml / dye1_ml / dye2_ml to physical system before use.
+mixture:
+  water_ml: 1.0
+  dye1_ml: 0.0
+  dye2_ml: 0.0
+
 steps:
   - home_robot
-  - wait_for_pcb_temperature
+  #- wait_for_pcb_temperature
+  #- prime_mixture                  # move robot to waste, pump prime_volume_ml through pipette
+  - add_mixture_to_pcb 
   - load_from_sample_holders_to_pcb
   - start_colour_scanning
   - wait_for_colour_scanning
