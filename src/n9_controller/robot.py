@@ -642,10 +642,8 @@ class N9RobotController:
         """
         Unconditionally run home_after_move() and reset the place counter.
 
-        Call this at the end of every batch transfer (e.g. after the last
-        pick_from/place_at pair in load_from_legacy_rack_to_pcb or
-        run_ni_test_cell_loop) so the arm always ends each workflow step in
-        the homed position regardless of home_interval.
+        Call this at the end of every batch transfer so the arm always ends
+        each workflow step in the homed position regardless of home_interval.
         """
         self._place_count = 0
         self.home_after_move()

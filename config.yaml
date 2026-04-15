@@ -206,7 +206,7 @@ fluidic_pump_controller:
 # Insert procedure: move to xyz → engage piston → open gripper → home
 #                   → fill (H2O_ECELL pump) → drain (Drain pump)
 test_cell:
-  xyz: [281.25, 75, 105]                       # robot XYZ (mm) for sample insertion/test position
+  xyz: [335.0, -56.25, 105]                       # robot XYZ (mm) for sample insertion/test position
   safe_travel_z_mm: 200.0                      # Z (mm) to raise to before/after test cell moves
   # Digital output index (from legacy params.py ECELL_INDICES)
   piston_output_index: 2                       # hydraulic piston (on = engage/clamp)

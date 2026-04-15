@@ -33,13 +33,7 @@ from n9_controller.experiment_config import ExperimentConfig, load_experiment
 from n9_controller.pump_controller import PumpController
 from n9_controller.robot import N9RobotController
 from fluidic_hardware.pump_controller import PumpController as FluidicPumpCtrl
-from n9_controller.state_machine import (
-    ExperimentState,
-    HolderSlotState,
-    LegacyRackSlotState,
-    PCBSensorState,
-    LegacyRackSlotRecord,
-)
+from n9_controller.state_machine import ExperimentState
 from spectral_board_manager.board_manager import BoardManager
 
 logger = logging.getLogger(__name__)
@@ -140,17 +134,15 @@ class ExperimentRunner:
             if os.path.exists(self.exp_cfg.holder_state_path)
             else None
         )
-        rack_state_path = (
-            self.exp_cfg.legacy_rack_state_path
-            if os.path.exists(self.exp_cfg.legacy_rack_state_path)
-            else None
-        )
 
         if resume:
             logger.info("Resuming experiment state from %s", self._state_dir)
             self.state = ExperimentState.load(self._state_dir)
         else:
-            logger.info("Initialising fresh experiment state for '%s'", self.exp_cfg.experiment_id)
+            logger.info(
+                "Initialising fresh experiment state for '%s'",
+                self.exp_cfg.experiment_id,
+            )
             self.state = ExperimentState.new(
                 experiment_id=self.exp_cfg.experiment_id,
                 pcb_layouts=[
@@ -161,12 +153,7 @@ class ExperimentRunner:
                     self.coord_map.holder_layout(hid)
                     for hid in self.exp_cfg.sample_holders
                 ],
-                rack_layouts=[
-                    self.coord_map.rack_layout(rid)
-                    for rid in self.exp_cfg.legacy_racks
-                ],
                 holder_state_path=holder_state_path,
-                rack_state_path=rack_state_path,
             )
             self.state.save(self._state_dir)
 
@@ -199,6 +186,13 @@ class ExperimentRunner:
             logger.info("Experiment '%s' complete.", self.exp_cfg.experiment_id)
 
         finally:
+            try:
+                self.fluidic_pump_ctrl.emergency_stop()
+            except Exception:
+                logger.warning(
+                    "fluidic_pump_ctrl.emergency_stop() failed during cleanup — skipping.",
+                    exc_info=True,
+                )
             try:
                 self.robot.return_to_joint_zero()
             except Exception:
@@ -405,191 +399,6 @@ class ExperimentRunner:
                 )
                 self.state.save(self._state_dir)
 
-    def load_from_legacy_rack_to_pcb(self) -> None:
-        """
-        Move samples from the legacy sample rack to free PCB sensor slots.
-
-        For each SampleSpec with source pointing to a legacy rack and destination "pcb":
-          - Find FRESH rack slots of the requested type
-          - Pick each sample from the rack and place on a free PCB sensor slot
-          - Transition rack slot → EMPTY, PCB slot → EXPERIMENT_RUNNING
-            (dye is assumed to be pre-filled manually in the PCB wells)
-        """
-        for spec in self.exp_cfg.samples:
-            if spec.destination != "pcb":
-                continue
-            # Check if source is a known legacy rack
-            if spec.source not in self.exp_cfg.legacy_racks:
-                continue
-
-            rack_id = spec.source
-            logger.info(
-                "Loading %d × '%s' from legacy rack '%s' to PCB",
-                spec.count, spec.sample_type, rack_id,
-            )
-
-            rack_slots = self.state.get_fresh_rack_slots(rack_id, spec.sample_type, spec.count)
-            free_pcb_slots = self.state.get_free_pcb_locations()
-
-            if len(free_pcb_slots) < spec.count:
-                raise RuntimeError(
-                    f"Not enough free PCB slots: need {spec.count}, "
-                    f"only {len(free_pcb_slots)} available."
-                )
-
-            for rack_slot, pcb_slot in zip(rack_slots, free_pcb_slots[:spec.count]):
-                sample_id = rack_slot.sample_id
-                if sample_id is None:
-                    raise RuntimeError(
-                        f"Rack slot {rack_slot.location_key} has no sample_id. "
-                        f"Check legacy_rack_state.json."
-                    )
-
-                from_xyz = self.coord_map.legacy_rack_slot_xyz(
-                    rack_slot.rack_id, rack_slot.col, rack_slot.row
-                )
-                to_xyz = self.coord_map.pcb_sensor_xyz(
-                    pcb_slot.pcb_id, pcb_slot.col, pcb_slot.row
-                )
-
-                logger.info(
-                    "  %s: rack %s → PCB %s",
-                    sample_id, rack_slot.location_key, pcb_slot.location_key,
-                )
-                self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
-                self.robot.place_at(to_xyz[0], to_xyz[1], to_xyz[2])
-
-                self.state.transfer_rack_slot_to_pcb(
-                    rack_id=rack_slot.rack_id,
-                    rack_col=rack_slot.col,
-                    rack_row=rack_slot.row,
-                    pcb_id=pcb_slot.pcb_id,
-                    pcb_col=pcb_slot.col,
-                    pcb_row=pcb_slot.row,
-                    dye_type=spec.dye_type,
-                )
-                self.state.save(self._state_dir)
-
-        # Ensure arm is homed after the batch regardless of home_interval
-        self.robot.force_home()
-
-    def run_ni_test_cell_loop(self) -> None:
-        """
-        Loop each Ni strip through the test cell. Sources samples from:
-          - Legacy rack slots (spec.source in legacy_racks)
-          - Sample holder slots (spec.source == "holder")
-
-        For each FRESH Ni sample:
-          1.  Pick from source (rack or holder)
-          2.  Move to test cell position (gripper holding sample)
-          3.  Engage hydraulic piston (before releasing gripper)
-          4.  Open gripper and home arm
-          5.  Fill test cell with H2O (fill_pump)
-          6.  Wait wait_time_s seconds
-          7.  Drain test cell (Drain peristaltic pump)
-          8.  Release piston
-          9.  Retrieve sample from test cell
-          10. Return to original slot
-        """
-        demo_cfg = self.exp_cfg.test_cell_demo
-        if demo_cfg is None:
-            logger.info("No test_cell_demo config found — skipping run_ni_test_cell_loop.")
-            return
-
-        tc = self.coord_map.test_cell
-        tc_xyz = tc.xyz
-        wait_s = getattr(demo_cfg, "wait_time_s", 5.0)
-
-        def _run_one_sample_through_test_cell(sample_id: str, from_xyz: tuple) -> None:
-            """Inner helper: run a single sample through the full test cell protocol."""
-            logger.info("  %s → test cell", sample_id)
-            self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
-            self.robot.move_to_test_cell(tc_xyz)
-            self.pump_ctrl.engage_piston()
-            try:
-                self.state.set_sample_in_test_cell(sample_id, True)
-                self.state.save(self._state_dir)
-                self.robot.release_at_test_cell()
-                self.pump_ctrl.fill_peristaltic(demo_cfg.fill_pump, demo_cfg.fill_volume_ml)
-                logger.info("  Holding for %.0f s ...", wait_s)
-                time.sleep(wait_s)
-                self.pump_ctrl.drain(demo_cfg.drain_volume_ml)
-                self.robot.retrieve_from_test_cell(tc_xyz)
-            finally:
-                logger.info("  Releasing piston.")
-                self.pump_ctrl.release_piston()
-            self.robot.raise_to_safe()
-
-        # ── Source: legacy rack ───────────────────────────────────────────────
-        ni_rack_specs = [
-            spec for spec in self.exp_cfg.samples
-            if spec.destination == "test_cell"
-            and spec.source in self.exp_cfg.legacy_racks
-        ]
-        for spec in ni_rack_specs:
-            rack_id = spec.source
-            candidates = self.state.get_all_fresh_rack_slots(rack_id, spec.sample_type)
-            logger.info(
-                "Test cell loop: %d × '%s' from rack '%s'",
-                len(candidates), spec.sample_type, rack_id,
-            )
-            for rack_slot in candidates:
-                sample_id = rack_slot.sample_id
-                if sample_id is None:
-                    continue
-                from_xyz = self.coord_map.legacy_rack_slot_xyz(
-                    rack_slot.rack_id, rack_slot.col, rack_slot.row
-                )
-                _run_one_sample_through_test_cell(sample_id, from_xyz)
-                self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])
-                self.state.return_sample_from_test_cell_to_rack(
-                    sample_id, rack_slot.rack_id, rack_slot.col, rack_slot.row
-                )
-                self.state.save(self._state_dir)
-                logger.info("  %s returned to rack %s", sample_id, rack_slot.location_key)
-
-        # ── Source: sample holder ─────────────────────────────────────────────
-        ni_holder_specs = [
-            spec for spec in self.exp_cfg.samples
-            if spec.destination == "test_cell"
-            and spec.source == "holder"
-        ]
-        for spec in ni_holder_specs:
-            try:
-                holder_slots = self.state.get_fresh_samples(spec.sample_type, spec.count)
-            except ValueError:
-                holder_slots = [
-                    r for r in self.state.holder_slots.values()
-                    if r.state == HolderSlotState.FRESH
-                    and r.sample_type == spec.sample_type
-                ]
-            logger.info(
-                "Test cell loop: %d × '%s' from holder",
-                len(holder_slots), spec.sample_type,
-            )
-            for holder_slot in holder_slots:
-                sample_id = holder_slot.sample_id
-                if sample_id is None:
-                    continue
-                from_xyz = self.coord_map.holder_slot_xyz(
-                    holder_slot.holder_id, holder_slot.col, holder_slot.row
-                )
-                _run_one_sample_through_test_cell(sample_id, from_xyz)
-                self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])
-                self.state.set_sample_in_test_cell(sample_id, False)
-                self.state.return_sample_to_holder(
-                    sample_id,
-                    holder_slot.holder_id,
-                    holder_slot.col,
-                    holder_slot.row,
-                )
-                self.state.save(self._state_dir)
-                logger.info(
-                    "  %s returned to holder %s", sample_id, holder_slot.location_key
-                )
-
-        # Ensure arm is homed after the batch regardless of home_interval
-        self.robot.force_home()
 
     def wait_for_pcb_temperature(self) -> None:
         """
@@ -667,123 +476,6 @@ class ExperimentRunner:
         self.state.complete_all_running_experiments()
         logger.info("Colour scanning complete. Total scans: %d", self.state.scan_count)
 
-    def run_test_cell_experiments(self) -> None:
-        """
-        Run each requested sample type through the test cell one at a time.
-
-        For each sample:
-          1. Pick from PCB (or holder) → transfer to test cell
-          2. Run test-cell protocol (placeholder)
-          3. Return sample to its holder slot
-        """
-        tc_cfg = self.exp_cfg.test_cell_experiment
-        if not tc_cfg.enabled:
-            logger.info("Test-cell experiments disabled — skipping.")
-            return
-
-        test_xyz = self.coord_map.test_cell_xyz()
-
-        for spec in tc_cfg.samples:
-            logger.info(
-                "Test cell: running %d × '%s' (protocol: %s)",
-                spec.count, spec.sample_type, tc_cfg.protocol,
-            )
-            # Find FRESH samples still in holder (not yet moved to PCB)
-            try:
-                candidates = self.state.get_fresh_samples(spec.sample_type, spec.count)
-            except ValueError:
-                logger.warning(
-                    "Not enough fresh '%s' samples for test cell — using whatever is available.",
-                    spec.sample_type,
-                )
-                candidates = [
-                    r for r in self.state.holder_slots.values()
-                    if r.state == HolderSlotState.FRESH
-                    and r.sample_type == spec.sample_type
-                ][:spec.count]
-
-            for holder_slot in candidates:
-                sample_id = holder_slot.sample_id
-                if sample_id is None:
-                    continue
-
-                from_xyz = self.coord_map.holder_slot_xyz(
-                    holder_slot.holder_id, holder_slot.col, holder_slot.row
-                )
-                logger.info("  %s → test cell", sample_id)
-
-                # Pick from holder, place in test cell
-                self.robot.transfer(from_xyz, test_xyz)
-                self.state.set_sample_in_test_cell(sample_id, True)
-                self.state.save(self._state_dir)
-
-                # Run protocol (placeholder)
-                self._run_test_cell_protocol(sample_id, tc_cfg.protocol)
-
-                # Return to holder
-                logger.info("  %s → holder %s", sample_id, holder_slot.location_key)
-                self.robot.transfer(test_xyz, from_xyz)
-                self.state.set_sample_in_test_cell(sample_id, False)
-                self.state.return_sample_to_holder(
-                    sample_id,
-                    holder_slot.holder_id,
-                    holder_slot.col,
-                    holder_slot.row,
-                )
-                self.state.save(self._state_dir)
-
-    def post_colour_test_cell(self) -> None:
-        """
-        After colour experiments are complete, move each used PCB sample
-        through the test cell for a quick electrochemical test before
-        returning it to the holder.
-
-        Placeholder: moves samples but the protocol is not yet defined.
-        """
-        tc_cfg = self.exp_cfg.test_cell_experiment
-        if not tc_cfg.enabled:
-            logger.info("Test-cell post-colour experiments disabled — skipping.")
-            return
-
-        test_xyz = self.coord_map.test_cell_xyz()
-        complete_slots = self.state.get_complete_experiments()
-        logger.info("Post-colour test cell: %d samples to process", len(complete_slots))
-
-        for pcb_rec in complete_slots:
-            sample_id = pcb_rec.current_sample_id
-            if sample_id is None:
-                continue
-            sample = self.state.samples.get(sample_id)
-            if sample is None:
-                continue
-
-            pcb_xyz = self.coord_map.pcb_sensor_xyz(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
-            holder_xyz = self.coord_map.holder_slot_xyz(
-                sample.holder_id, sample.holder_col, sample.holder_row
-            )
-
-            # PCB → test cell
-            logger.info("  %s: PCB %s → test cell", sample_id, pcb_rec.location_key)
-            self.robot.transfer(pcb_xyz, test_xyz)
-            self.state.remove_sample_from_pcb(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
-            self.state.set_sample_in_test_cell(sample_id, True)
-            self.state.save(self._state_dir)
-
-            # Run protocol
-            self._run_test_cell_protocol(sample_id, tc_cfg.protocol)
-
-            # Test cell → holder
-            logger.info("  %s: test cell → holder %s", sample_id, sample.holder_id)
-            self.robot.transfer(test_xyz, holder_xyz)
-            self.state.set_sample_in_test_cell(sample_id, False)
-            self.state.return_sample_to_holder(
-                sample_id,
-                sample.holder_id,
-                sample.holder_col,
-                sample.holder_row,
-            )
-            self.state.save(self._state_dir)
-
     def return_all_to_holder(self) -> None:
         """
         Return all remaining PCB samples (EXPERIMENT_COMPLETE or EXPERIMENT_RUNNING)
@@ -803,35 +495,24 @@ class ExperimentRunner:
             if sample is None:
                 continue
 
-            pcb_xyz = self.coord_map.pcb_sensor_xyz(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
-
-            # Determine origin: legacy rack or holder
-            origin_id = sample.holder_id
-            if origin_id in self.coord_map.rack_ids:
-                origin_xyz = self.coord_map.legacy_rack_slot_xyz(
-                    origin_id, sample.holder_col, sample.holder_row
-                )
-                logger.info("  %s: PCB %s → rack %s", sample_id, pcb_rec.location_key, origin_id)
-                self.robot.pick_from(pcb_xyz[0], pcb_xyz[1], pcb_xyz[2])
-                self.robot.place_at(origin_xyz[0], origin_xyz[1], origin_xyz[2])
-                self.state.remove_sample_from_pcb(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
-                self.state.return_sample_from_test_cell_to_rack(
-                    sample_id, origin_id, sample.holder_col, sample.holder_row
-                )
-            else:
-                origin_xyz = self.coord_map.holder_slot_xyz(
-                    origin_id, sample.holder_col, sample.holder_row
-                )
-                logger.info("  %s: PCB %s → holder %s", sample_id, pcb_rec.location_key, origin_id)
-                self.robot.transfer(pcb_xyz, origin_xyz)
-                self.state.remove_sample_from_pcb(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
-                self.state.return_sample_to_holder(
-                    sample_id,
-                    origin_id,
-                    sample.holder_col,
-                    sample.holder_row,
-                )
-
+            pcb_xyz = self.coord_map.pcb_sensor_xyz(
+                pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row
+            )
+            origin_xyz = self.coord_map.holder_slot_xyz(
+                sample.holder_id, sample.holder_col, sample.holder_row
+            )
+            logger.info(
+                "  %s: PCB %s → holder %s",
+                sample_id, pcb_rec.location_key, sample.holder_id,
+            )
+            self.robot.transfer(pcb_xyz, origin_xyz)
+            self.state.remove_sample_from_pcb(pcb_rec.pcb_id, pcb_rec.col, pcb_rec.row)
+            self.state.return_sample_to_holder(
+                sample_id,
+                sample.holder_id,
+                sample.holder_col,
+                sample.holder_row,
+            )
             self.state.save(self._state_dir)
 
         # Ensure arm is homed after the batch regardless of home_interval
@@ -918,7 +599,95 @@ class ExperimentRunner:
         print(report)
         logger.info("Cleaning report written to %s", report_path)
 
-    # ── Fluidic helpers ────────────────────────────────────────────────────────
+    # ── Test cell loop ─────────────────────────────────────────────────────────
+
+    def run_test_cell_loop(self) -> None:
+        """
+        Loop samples through the electrochemical test cell.
+
+        Processes all SampleSpec entries with destination=="test_cell" and
+        source=="holder". Any sample type is accepted — use the samples list
+        in experiment.yaml to control which types are run.
+
+        For each FRESH sample in the holder:
+          1.  Pick from holder slot
+          2.  Move to test cell position (gripper holding sample)
+          3.  Engage hydraulic piston
+          4.  Release gripper and home arm
+          5.  Fill test cell (fill_pump from test_cell_config)
+          6.  Hold for wait_time_s seconds
+          7.  Drain test cell
+          8.  Release piston
+          9.  Retrieve sample from test cell
+          10. Return to original holder slot
+
+        Hardware position is taken from config.yaml test_cell section.
+        Fill/drain parameters come from test_cell_config in experiment.yaml.
+        """
+        tc_cfg = self.exp_cfg.test_cell_config
+        if tc_cfg is None:
+            logger.info(
+                "No test_cell_config in experiment.yaml — skipping run_test_cell_loop."
+            )
+            return
+
+        tc_xyz = self.coord_map.test_cell.xyz
+
+        def _run_one(sample_id: str, from_xyz: tuple) -> None:
+            logger.info("  %s → test cell", sample_id)
+            self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
+            self.robot.move_to_test_cell(tc_xyz)
+            self.pump_ctrl.engage_piston()
+            try:
+                self.state.set_sample_in_test_cell(sample_id, True)
+                self.state.save(self._state_dir)
+                self.robot.release_at_test_cell()
+                self.pump_ctrl.fill_peristaltic(
+                    tc_cfg.fill_pump, tc_cfg.fill_volume_ml
+                )
+                logger.info("  Holding for %.0f s ...", tc_cfg.wait_time_s)
+                time.sleep(tc_cfg.wait_time_s)
+                self.pump_ctrl.drain(tc_cfg.drain_volume_ml)
+                self.robot.retrieve_from_test_cell(tc_xyz)
+            finally:
+                logger.info("  Releasing piston.")
+                self.pump_ctrl.release_piston()
+            self.robot.raise_to_safe()
+
+        holder_specs = [
+            spec for spec in self.exp_cfg.samples
+            if spec.destination == "test_cell" and spec.source == "holder"
+        ]
+        for spec in holder_specs:
+            candidates = [
+                r for r in self.state.holder_slots.values()
+                if r.sample_type == spec.sample_type
+                and r.sample_id is not None
+                and r.state.value == "FRESH"
+            ]
+            logger.info(
+                "Test cell loop: %d × '%s' from holder",
+                len(candidates), spec.sample_type,
+            )
+            for slot in candidates:
+                sample_id = slot.sample_id
+                if sample_id is None:
+                    continue
+                from_xyz = self.coord_map.holder_slot_xyz(
+                    slot.holder_id, slot.col, slot.row
+                )
+                _run_one(sample_id, from_xyz)
+                self.robot.place_at(from_xyz[0], from_xyz[1], from_xyz[2])
+                self.state.set_sample_in_test_cell(sample_id, False)
+                self.state.return_sample_to_holder(
+                    sample_id, slot.holder_id, slot.col, slot.row
+                )
+                self.state.save(self._state_dir)
+                logger.info(
+                    "  %s returned to holder %s", sample_id, slot.location_key
+                )
+
+        self.robot.force_home()
 
     # ── Background scanning loop ───────────────────────────────────────────────
 
@@ -968,50 +737,22 @@ class ExperimentRunner:
                 scan_duration = time.monotonic() - scan_start
                 stop_event.wait(timeout=max(0.0, interval_s - scan_duration))
 
-    # ── Test cell protocol placeholder ─────────────────────────────────────────
-
-    def _run_test_cell_protocol(self, sample_id: str, protocol: str) -> None:
-        """
-        Placeholder for test-cell electrochemical experimentation.
-
-        Args:
-            sample_id: ID of the sample currently in the test cell.
-            protocol:  Protocol identifier string from experiment.yaml.
-
-        Raises:
-            NotImplementedError: Always raised with guidance on implementation.
-        """
-        raise NotImplementedError(
-            f"Test-cell protocol '{protocol}' is not yet implemented. "
-            f"Sample: '{sample_id}'. "
-            f"To implement:\n"
-            f"  1. Add hardware driver calls in this method.\n"
-            f"  2. Replace or extend the protocol field in experiment.yaml.\n"
-            f"  3. Remove this NotImplementedError once hardware is integrated.\n"
-            f"To skip test-cell steps, set 'test_cell_experiment.enabled: false' "
-            f"in experiment.yaml."
-        )
-
-
 # ── Step dispatch table ───────────────────────────────────────────────────────
 
 ExperimentRunner.STEP_MAP = {
-    "home_robot":                        ExperimentRunner.home_robot,
-    "load_samples_to_pcb":               ExperimentRunner.load_samples_to_pcb,
-    "load_from_sample_holders_to_pcb":   ExperimentRunner.load_from_sample_holders_to_pcb,
-    "load_from_legacy_rack_to_pcb":      ExperimentRunner.load_from_legacy_rack_to_pcb,
-    "create_mixture":                    ExperimentRunner.create_mixture,
-    "prime_mixture":                     ExperimentRunner.prime_mixture,
-    "add_mixture_to_pcb":                ExperimentRunner.add_mixture_to_pcb,
-    "deprime_mixture":                   ExperimentRunner.deprime_mixture,
-    "start_colour_scanning":             ExperimentRunner.start_colour_scanning,
-    "run_test_cell_experiments":         ExperimentRunner.run_test_cell_experiments,
-    "run_ni_test_cell_loop":             ExperimentRunner.run_ni_test_cell_loop,
-    "wait_for_colour_scanning":          ExperimentRunner.wait_for_colour_scanning,
-    "wait_for_pcb_temperature":          ExperimentRunner.wait_for_pcb_temperature,
-    "post_colour_test_cell":             ExperimentRunner.post_colour_test_cell,
-    "return_all_to_holder":              ExperimentRunner.return_all_to_holder,
-    "report_cleaning_needed":            ExperimentRunner.report_cleaning_needed,
+    "home_robot":                      ExperimentRunner.home_robot,
+    "load_samples_to_pcb":             ExperimentRunner.load_samples_to_pcb,
+    "load_from_sample_holders_to_pcb": ExperimentRunner.load_from_sample_holders_to_pcb,
+    "create_mixture":                  ExperimentRunner.create_mixture,
+    "prime_mixture":                   ExperimentRunner.prime_mixture,
+    "add_mixture_to_pcb":              ExperimentRunner.add_mixture_to_pcb,
+    "deprime_mixture":                 ExperimentRunner.deprime_mixture,
+    "start_colour_scanning":           ExperimentRunner.start_colour_scanning,
+    "run_test_cell_loop":              ExperimentRunner.run_test_cell_loop,
+    "wait_for_colour_scanning":        ExperimentRunner.wait_for_colour_scanning,
+    "wait_for_pcb_temperature":        ExperimentRunner.wait_for_pcb_temperature,
+    "return_all_to_holder":            ExperimentRunner.return_all_to_holder,
+    "report_cleaning_needed":          ExperimentRunner.report_cleaning_needed,
 }
 
 

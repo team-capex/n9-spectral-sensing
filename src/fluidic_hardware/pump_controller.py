@@ -127,7 +127,33 @@ class PumpController:
     def dc_pump(self, pump_no: int, pwm: float, seconds: float, check: bool) -> None:
         if pump_no < 0 or pump_no > 4:
             raise ValueError("Incorrect dc pump index; must be 1 -> 4")
-        
+
         self.ser.write(f"transferPump({pump_no},{pwm},{seconds})".encode())
         if check:
             self.check_response()
+
+    @skip_if_sim()
+    def emergency_stop(self) -> None:
+        """Reset the ESP32 via RTS pin to immediately halt all stepper motors.
+
+        Asserts the active-low EN (enable) pin by driving RTS high, which holds
+        the ESP32 in reset and stops all pump motion instantly. After a brief
+        delay the reset is released and the controller is allowed to reboot before
+        re-checking the connection.
+
+        Safe to call from a finally block — any serial errors are logged but not
+        re-raised.
+        """
+        logging.info("Emergency stop: asserting ESP32 reset via RTS pin ...")
+        try:
+            self.ser.setRTS(True)   # RTS high → EN pin low → ESP32 held in reset
+            time.sleep(0.1)
+            self.ser.setRTS(False)  # Release reset
+            time.sleep(2.0)         # Wait for ESP32 to reboot
+            self.ser.reset_input_buffer()
+            if self.check_status():
+                logging.info("Pump controller rebooted successfully after emergency stop.")
+            else:
+                logging.warning("Pump controller did not acknowledge after emergency stop reset.")
+        except Exception as exc:
+            logging.warning("emergency_stop: error during reset sequence: %s", exc)

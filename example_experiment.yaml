@@ -1,6 +1,7 @@
-# experiment.yaml
-# ================
-# Defines one complete experiment run for the N9 spectral sensing platform.
+# example_experiment.yaml
+# ========================
+# Reference experiment for the N9 spectral sensing platform.
+# Copy to experiment-database/ with a descriptive name before running.
 #
 # Run with:
 #   experiment-run --config config.yaml --experiment experiment.yaml
@@ -8,17 +9,17 @@
 # To resume an interrupted experiment:
 #   experiment-run --config config.yaml --experiment experiment.yaml --resume
 
-experiment_id: "demo-20260331-dye-mixture-spectral-ni-ecell"
+experiment_id: "demo-20260415-dye-mixture-spectral-ecell"
 description: >
-  Dye mixture + multi-station spectral sensing + Ni electrochemical test cell.
+  Dye mixture + multi-station spectral sensing + electrochemical test cell.
   Phase 0: Home robot.
   Phase 1: Create dye mixture (water + dye1 + dye2 via stepper pumps).
   Phase 2: Prime dose line — robot moves to waste position, pumps mixture through pipette.
-  Phase 3: Dispense 0.2 ml to each of 80 PCB sensor wells (5 boards x 16 sensors).
+  Phase 3: Dispense 0.2 ml to each PCB sensor well.
   Phase 4: Deprime — reverse dose pump to retract liquid from pipette.
-  Phase 5: Load physical samples from 3 holders into all 5 sensing stations.
+  Phase 5: Load physical samples from holders into sensing stations.
   Phase 6: Start continuous spectral colour scanning (background thread).
-  Phase 7: Cycle Ni samples through electrochemical test cell (concurrent with scanning).
+  Phase 7: Cycle samples through electrochemical test cell (concurrent with scanning).
   Phase 8: Wait for colour scanning to complete.
   Phase 9: Return all PCB samples to their holder origins.
   Phase 10: Write cleaning report.
@@ -37,21 +38,15 @@ sample_holders:
   - holder-2
   - holder-3
 
-# Legacy rack not used in this experiment.
-legacy_racks: []
-
 # holder_state.json declares the initial slot contents for all holders.
 holder_state_path: "holder_state.json"
 
-# Kept for compatibility; legacy rack is not used here.
-legacy_rack_state_path: "legacy_rack_state.json"
-
 # Sample groups.
-# source: "holder" | legacy rack id
+# source: "holder"
 # destination: "pcb" (spectral station) | "test_cell"
 samples:
   - sample_type: "PC"
-    count: 10                       # 5 boards x 16 sensors
+    count: 10
     source: "holder"
     destination: "pcb"
     dye_type: "dye-mixture"         # dye dispensed by add_mixture_to_pcb step
@@ -59,7 +54,7 @@ samples:
   - sample_type: "Ni"
     count: 8
     source: "holder"
-    destination: "test_cell"
+    destination: "test_cell"        # processed by run_test_cell_loop step
 
 # Spectral scanning schedule.
 # interval_minutes: 0  → continuous (scan as fast as possible)
@@ -69,14 +64,11 @@ scanning:
   total_duration_hours: 0
   temperature_control: false
 
-# Legacy test_cell_experiment — not used in this demo.
-test_cell_experiment:
-  enabled: false
-  protocol: "placeholder"
-  samples: []
-
-# Test cell configuration for the Ni-strip loop.
-test_cell_demo:
+# Test cell loop parameters.
+# Hardware position is set in config.yaml test_cell section.
+# Samples run through the cell are selected via the samples list above
+# (destination: test_cell). Any sample type is accepted.
+test_cell_config:
   fill_pump: "H2O_VIAL"
   fill_volume_ml: 5.0
   drain_volume_ml: 10.0
@@ -92,27 +84,27 @@ mixture:
 
 # Ordered list of experiment steps.
 steps:
-  - home_robot                     # home robot arm
+  - home_robot                       # home robot arm
 
-  - create_mixture                 # pump water + dye1 + dye2 into mixing vessel
+  - create_mixture                   # pump water + dye1 + dye2 into mixing vessel
 
-  - prime_mixture                  # move robot to waste, pump prime_volume_ml through pipette
+  - prime_mixture                    # move robot to waste, pump prime_volume_ml through pipette
 
-  - add_mixture_to_pcb             # dispense 0.2 ml to each of 80 PCB sensor wells
+  - add_mixture_to_pcb               # dispense 0.2 ml to each PCB sensor well
 
-  - deprime_mixture                # reverse dose pump to retract liquid from pipette
+  - deprime_mixture                  # reverse dose pump to retract liquid from pipette
 
   - load_from_sample_holders_to_pcb  # pick physical samples from holders → PCB sensor slots
 
-  - start_colour_scanning          # start continuous spectral measurements (background thread)
+  - start_colour_scanning            # start continuous spectral measurements (background thread)
 
-  - run_ni_test_cell_loop          # cycle all Ni samples through test cell (concurrent)
+  - run_test_cell_loop               # cycle all test_cell samples through electrochemical cell
 
-  - wait_for_colour_scanning       # block until scan thread exits
+  - wait_for_colour_scanning         # block until scan thread exits
 
-  - return_all_to_holder           # return all PCB samples to their origin holder slots
+  - return_all_to_holder             # return all PCB samples to their origin holder slots
 
-  - report_cleaning_needed         # write cleaning report
+  - report_cleaning_needed           # write cleaning report
 
 # Output settings.
 output:

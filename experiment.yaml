@@ -14,26 +14,34 @@ sensing_stations:
 sample_holders:
   - holder-3
 
-legacy_racks: []
-
 holder_state_path: "holder_state.json"
-legacy_rack_state_path: "legacy_rack_state.json"
 
+# Sample groups.
+# source: "holder"
+# destination: "pcb" (spectral station) | "test_cell"
 samples:
   - sample_type: "PC"
     count: 10
     source: "holder"
     destination: "pcb"
+    dye_type: "dye-mixture"         # dye dispensed by add_mixture_to_pcb step
+
+  - sample_type: "Ni"
+    count: 8
+    source: "holder"
+    destination: "test_cell"
 
 scanning:
   interval_minutes: 0
   total_duration_hours: 0.01
   temperature_control: true
 
-test_cell_experiment:
-  enabled: false
-  protocol: "placeholder"
-  samples: []
+test_cell_config:
+  fill_pump: "H2O_VIAL"
+  fill_volume_ml: 5.0
+  drain_volume_ml: 10.0
+  wait_time_s: 10.0
+  drain_pump: "Drain"
 
 # Dye mixture recipe — volumes dispensed by the fluidic stepper pump PCB.
 # Calibrate water_ml / dye1_ml / dye2_ml to physical system before use.
@@ -43,14 +51,15 @@ mixture:
   dye2_ml: 0.0
 
 steps:
-  - home_robot
+  #- home_robot
+  - run_test_cell_loop
   #- wait_for_pcb_temperature
   #- prime_mixture                  # move robot to waste, pump prime_volume_ml through pipette
-  - add_mixture_to_pcb 
-  - load_from_sample_holders_to_pcb
-  - start_colour_scanning
-  - wait_for_colour_scanning
-  - return_all_to_holder
+  #- add_mixture_to_pcb 
+  #- load_from_sample_holders_to_pcb
+  #- start_colour_scanning
+  #- wait_for_colour_scanning
+  #- return_all_to_holder
 
 output:
   cleaning_report_path: "data/cleaning_report.txt"
