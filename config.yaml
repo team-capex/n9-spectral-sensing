@@ -12,7 +12,7 @@ PCBs:
     sample_type: "liquid"        # "solid" or "liquid" (solid => LEDs_ON true)
     control_voltage: 9.0         # 0..10, applied only during run()
     target_temp_c: 40          # float e.g. 37.0 enables firmware PID; null = heaters off
-    max_power_%: 50               # float % power
+    max_power_%: 20               # float % power (KEEP LOW)
     sensor_pin: 5                 # NTC sensor pin input (1, 2, 4 or 5)
 
   - board_id: "board-2"
@@ -25,7 +25,7 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
-    max_power_%: 50     
+    max_power_%: 20     
     sensor_pin: 5
 
   - board_id: "board-3"
@@ -38,7 +38,7 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
-    max_power_%: 50
+    max_power_%: 20
     sensor_pin: 5
 
   - board_id: "board-4"
@@ -51,7 +51,7 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
-    max_power_%: 50
+    max_power_%: 20
     sensor_pin: 5
 
   - board_id: "board-5"
@@ -64,7 +64,7 @@ PCBs:
     sample_type: "liquid"
     control_voltage: 9.0
     target_temp_c: null
-    max_power_%: 50
+    max_power_%: 20
     sensor_pin: 5
 
 # ── N9 Robot ──────────────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ fluidic_pump_controller:
   timeout: 60.0
   pipette_offset_mm: 60.0        # gripper-to-pipette-tip distance along last link, XY plane
   pipette_x_correction_mm: -0.5  # fixed X position correction for PCB pipette targets (mm)
-  pipette_y_correction_mm: 2.2  # fixed Y position correction for PCB pipette targets (mm)
+  pipette_y_correction_mm: 2.5  # fixed Y position correction for PCB pipette targets (mm)
   mixture:
     water_pump_index: 2
     dye1_pump_index: 3
@@ -206,7 +206,7 @@ fluidic_pump_controller:
 # Insert procedure: move to xyz → engage piston → open gripper → home
 #                   → fill (H2O_ECELL pump) → drain (Drain pump)
 test_cell:
-  xyz: [335.0, -56.25, 105]                       # robot XYZ (mm) for sample insertion/test position
+  xyz: [346.0, -56.25, 105]                       # robot XYZ (mm) for sample insertion/test position
   safe_travel_z_mm: 200.0                      # Z (mm) to raise to before/after test cell moves
   # Digital output index (from legacy params.py ECELL_INDICES)
   piston_output_index: 2                       # hydraulic piston (on = engage/clamp)

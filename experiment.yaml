@@ -47,13 +47,14 @@ test_cell_config:
 # Calibrate water_ml / dye1_ml / dye2_ml to physical system before use.
 mixture:
   water_ml: 1.0
-  dye1_ml: 0.0
-  dye2_ml: 0.0
+  dye1_ml: 0.5
+  dye2_ml: 0.5
 
 steps:
   #- home_robot
-  - run_test_cell_loop
-  #- wait_for_pcb_temperature
+  #- run_test_cell_loop
+  - wait_for_pcb_temperature
+  #- create_mixture
   #- prime_mixture                  # move robot to waste, pump prime_volume_ml through pipette
   #- add_mixture_to_pcb 
   #- load_from_sample_holders_to_pcb

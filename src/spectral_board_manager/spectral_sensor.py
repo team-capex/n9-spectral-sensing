@@ -152,9 +152,12 @@ class SpectralSensor:
         self.check_response()
 
     @skip_if_sim(default_return=25.0)
-    def get_temperature(self, sensor_pin: int = 5) -> float:
+    def get_temperature(self, sensor_pin: int = 5, multi: bool = True) -> float:
         """Return temperature of NTC probe on specified pin (°C)."""
-        self.ser.write(f"getTemperature({sensor_pin})".encode())
+        if multi:
+            self.ser.write("getMultiTemperature()".encode())
+        else:
+            self.ser.write(f"getTemperature({sensor_pin})".encode())
         return float(self.get_data().strip())
     
     @skip_if_sim(default_return=0)
@@ -164,9 +167,13 @@ class SpectralSensor:
         return float(self.get_data().strip())
 
     @skip_if_sim()
-    def set_temperature_target(self, target_c: float, max_power: float = 50, sensor_pin: int = 5) -> None:
+    def set_temperature_target(self, target_c: float, max_power: float = 50, sensor_pin: int = 5, multi: bool = True) -> None:
         """Send PID temperature target to firmware (resets integral on device)."""
-        self.ser.write(f"setTemperatureTarget({target_c:.2f},{max_power:.2f},{sensor_pin})".encode())
+        if multi:
+            self.ser.write(f"setMultiTemperatureTarget({target_c:.2f},{max_power:.2f})".encode())
+        else:
+            self.ser.write(f"setTemperatureTarget({target_c:.2f},{max_power:.2f},{sensor_pin})".encode())
+        
         self.check_response()
 
     @skip_if_sim()

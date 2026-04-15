@@ -590,6 +590,7 @@ class N9RobotController:
         if self.simulate:
             logger.info("[SIM] return_to_joint_zero()")
             return
+        self.raise_to_safe()
         self._c9._home_joints()  # type: ignore[union-attr]
 
     def move_xy_pipette(self, x: float, y: float, tool_length: float) -> None:
