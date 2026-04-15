@@ -119,7 +119,7 @@ _Z_AXIS_OFFSET     = 30   # mm
 # physical gripper zero offset.  Testing showed the gripper was 90° off when
 # using POS_Y=0, so we use pi/2 here which shifts all gripper angles by +90°.
 # If the gripper corrects in the wrong direction, flip the sign to -pi/2.
-_DEFAULT_TOOL_ORIENTATION = math.pi / 2   # corrected: was 0.0 (POS_Y), 90° off
+_DEFAULT_TOOL_ORIENTATION = 0
 
 # Arm link lengths (mm)
 _L1 = _L2 = 170.0
@@ -142,7 +142,12 @@ def _mm_to_counts_z(z_mm: float) -> int:
     return int(_Z_AXIS_MAX_COUNTS - _Z_AXIS_COUNTS_PER_MM * (z_mm - _Z_AXIS_OFFSET) + 0.5)
 
 
-def _ik(x: float, y: float, tool_length: float = 0.0) -> tuple[float, float, float]:
+def _ik(
+    x: float,
+    y: float,
+    tool_length: float = 0.0,
+    gripper_angle_offset_rad: float = 0.0,
+) -> tuple[float, float, float]:
     """
     Inverse kinematics: (x, y) mm → (gripper_rad, elbow_rad, shoulder_rad).
 
@@ -153,8 +158,14 @@ def _ik(x: float, y: float, tool_length: float = 0.0) -> tuple[float, float, flo
     for the joint angles that place a point tool_length mm beyond the gripper at (x, y)
     — used for pipette dispensing where L2' = L2 + pipette_offset_mm. Callers that
     omit tool_length (or pass 0.0) get standard gripper IK, unchanged from before.
+
+    gripper_angle_offset_rad: additional rotation applied to the gripper joint on
+    top of the default tool orientation. Pass math.radians(90) for the test cell
+    to rotate the gripper 90° without affecting any other location.
     """
-    tool_orientation = _DEFAULT_TOOL_ORIENTATION - math.pi / 2  # = -pi/2
+    tool_orientation = (
+        _DEFAULT_TOOL_ORIENTATION + gripper_angle_offset_rad
+    )
 
     # IK convention: swap axes  (arm 'home' is along +Y robot axis)
     x, y = y, -x
@@ -348,6 +359,7 @@ class _LegacyN9:
         z: Optional[float] = None,
         wait: bool = True,
         tool_length: float = 0.0,
+        gripper_angle_offset_rad: float = 0.0,
     ) -> None:
         """
         Move the arm.
@@ -362,7 +374,9 @@ class _LegacyN9:
             # Gripper angle is computed from IK so tool orientation stays constant
             # across the workspace (DEFAULT_TOOL_ORIENTATION = POS_Y = 0 rad).
             # Z is held at the last tracked position so this is a pure XY travel.
-            theta_g, theta_e, theta_s = _ik(x, y, tool_length)
+            theta_g, theta_e, theta_s = _ik(
+                x, y, tool_length, gripper_angle_offset_rad
+            )
             g_cts = _rad_to_counts_gripper(theta_g)
             e_cts = _rad_to_counts_elbow(theta_e)
             s_cts = _rad_to_counts_shoulder(theta_s)
@@ -516,12 +530,26 @@ class N9RobotController:
             return
         self._c9.home()  # type: ignore[union-attr]
 
-    def move_xy(self, x: float, y: float) -> None:
+    def move_xy(
+        self,
+        x: float,
+        y: float,
+        gripper_angle_offset_rad: float = 0.0,
+    ) -> None:
         """Move to (x, y) at the current safe travel height."""
         if self.simulate:
-            logger.info("[SIM] goto_xy_safe(x=%.2f, y=%.2f)", x, y)
+            if gripper_angle_offset_rad != 0.0:
+                logger.info(
+                    "[SIM] goto_xy_safe(x=%.2f, y=%.2f, gripper_offset=%.4f rad)",
+                    x, y, gripper_angle_offset_rad,
+                )
+            else:
+                logger.info("[SIM] goto_xy_safe(x=%.2f, y=%.2f)", x, y)
             return
-        self._c9.move_arm(x=x, y=y, wait=True)  # type: ignore[union-attr]
+        self._c9.move_arm(  # type: ignore[union-attr]
+            x=x, y=y, wait=True,
+            gripper_angle_offset_rad=gripper_angle_offset_rad,
+        )
 
     def move_z(self, z: float) -> None:
         """Move the Z axis to the given height (mm)."""
@@ -673,7 +701,11 @@ class N9RobotController:
 
     # ── Test-cell helpers (XYZ-based) ─────────────────────────────────────────
 
-    def move_to_test_cell(self, xyz: tuple) -> None:
+    def move_to_test_cell(
+        self,
+        xyz: tuple,
+        gripper_angle_offset_rad: float = 0.0,
+    ) -> None:
         """
         Move to the test cell position while holding the sample in the gripper.
 
@@ -681,16 +713,17 @@ class N9RobotController:
 
         Sequence:
           1. raise_to_safe()  — ensure safe Z before XY travel
-          2. move_xy(x, y)    — travel over test cell
+          2. move_xy(x, y)    — travel over test cell (gripper angle applied here)
           3. move_z(z)        — lower to insertion depth
 
         Args:
             xyz: (x, y, z) robot coordinates (mm) of the test cell position.
+            gripper_angle_offset_rad: extra gripper rotation for this location.
         """
         x, y, z = xyz
         logger.info("Moving to test cell position xyz=(%.2f, %.2f, %.2f)", x, y, z)
         self.raise_to_safe()
-        self.move_xy(x, y)
+        self.move_xy(x, y, gripper_angle_offset_rad=gripper_angle_offset_rad)
         self.move_z(z)
 
     def release_at_test_cell(self) -> None:
@@ -709,7 +742,11 @@ class N9RobotController:
         self.raise_to_safe()
         self.home_after_move()
 
-    def retrieve_from_test_cell(self, xyz: tuple) -> None:
+    def retrieve_from_test_cell(
+        self,
+        xyz: tuple,
+        gripper_angle_offset_rad: float = 0.0,
+    ) -> None:
         """
         Retrieve a sample from the test cell after the piston has been released.
 
@@ -717,21 +754,22 @@ class N9RobotController:
 
         Sequence:
           1. raise_to_safe()  — ensure safe Z before XY travel
-          2. move_xy(x, y)    — travel over test cell
+          2. move_xy(x, y)    — travel over test cell (gripper angle applied here)
           3. move_z(z)        — lower to grip depth
           4. close_gripper()  — grip sample
           5. raise_to_safe()  — lift sample clear
 
         Does NOT home after retrieving — the robot holds the sample and the
         caller is expected to immediately call place_at() to return it to the
-        rack.  Homing while gripping would drop the sample before it is placed.
+        holder.  Homing while gripping would drop the sample before it is placed.
 
         Args:
             xyz: (x, y, z) same coordinates used in move_to_test_cell().
+            gripper_angle_offset_rad: extra gripper rotation for this location.
         """
         x, y, z = xyz
         logger.info("Retrieving sample from test cell xyz=(%.2f, %.2f, %.2f)", x, y, z)
         self.raise_to_safe()
-        self.move_xy(x, y)
+        self.move_xy(x, y, gripper_angle_offset_rad=gripper_angle_offset_rad)
         self.move_z(z)
         self.close_gripper()

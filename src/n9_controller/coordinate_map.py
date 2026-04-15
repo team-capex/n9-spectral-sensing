@@ -68,6 +68,8 @@ class TestCellLayout:
     fill_pump: str              # peristaltic pump name for filling (e.g. "H2O_ECELL")
     drain_pump: str             # peristaltic pump name for draining (e.g. "Drain")
     fill_volume_ml: float       # volume to fill the test cell (mL)
+    # extra gripper rotation (degrees) for test cell XY moves only
+    gripper_angle_deg: float = 0.0
 
 
 # ── CoordinateMap ─────────────────────────────────────────────────────────────
@@ -243,6 +245,7 @@ class CoordinateMap:
             fill_pump=str(tc.get("fill_pump", "H2O_ECELL")),
             drain_pump=str(tc.get("drain_pump", "Drain")),
             fill_volume_ml=float(tc.get("fill_volume_ml", 11.5)),
+            gripper_angle_deg=float(tc.get("gripper_angle", 0.0)),
         )
 
         return cls(pcb_layouts, holder_layouts, test_cell)

@@ -214,3 +214,4 @@ test_cell:
   fill_pump: "H2O_VIAL"                       # pump used to fill the test cell
   drain_pump: "Drain"                          # pump used to drain the test cell
   fill_volume_ml: 0                            # ECELL_VOLUME from legacy
+  gripper_angle: 90                            # degrees; extra gripper rotation for test cell XY moves only

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import threading
 import time
@@ -632,11 +633,14 @@ class ExperimentRunner:
             return
 
         tc_xyz = self.coord_map.test_cell.xyz
+        tc_angle_rad = math.radians(self.coord_map.test_cell.gripper_angle_deg)
 
         def _run_one(sample_id: str, from_xyz: tuple) -> None:
             logger.info("  %s → test cell", sample_id)
             self.robot.pick_from(from_xyz[0], from_xyz[1], from_xyz[2])
-            self.robot.move_to_test_cell(tc_xyz)
+            self.robot.move_to_test_cell(
+                tc_xyz, gripper_angle_offset_rad=tc_angle_rad
+            )
             self.pump_ctrl.engage_piston()
             try:
                 self.state.set_sample_in_test_cell(sample_id, True)
@@ -648,7 +652,9 @@ class ExperimentRunner:
                 logger.info("  Holding for %.0f s ...", tc_cfg.wait_time_s)
                 time.sleep(tc_cfg.wait_time_s)
                 self.pump_ctrl.drain(tc_cfg.drain_volume_ml)
-                self.robot.retrieve_from_test_cell(tc_xyz)
+                self.robot.retrieve_from_test_cell(
+                    tc_xyz, gripper_angle_offset_rad=tc_angle_rad
+                )
             finally:
                 logger.info("  Releasing piston.")
                 self.pump_ctrl.release_piston()
