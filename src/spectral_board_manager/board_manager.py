@@ -38,6 +38,7 @@ class BoardConfig:
     target_temp_c: float | None = None  # None = heaters off; float = firmware PID target
     max_power_pct: float = 50.0         # max heater power % (0..100); maps to max_power_% in config.yaml
     sensor_pin: int = 5                 # NTC thermistor pin used for PID feedback
+    simulate: bool = False              # True = no serial connection, dummy sensor data
 
 
 @dataclass(frozen=True)
@@ -54,16 +55,19 @@ class _BoardRuntime:
     """
     Holds the live objects for one board: SpectralSensor + SpectralAnalysis
     """
-    def __init__(self, cfg: BoardConfig, data_dir: str):
+    def __init__(self, cfg: BoardConfig, data_dir: str, auto_heat: bool = True):
         self.cfg = cfg
 
-        self.sensor = SpectralSensor(cfg.com_port)
+        self.sensor = SpectralSensor(cfg.com_port, sim=cfg.simulate)
         self.analyser = SpectralAnalysis(data_dir)
 
         self._apply_settings()
 
-        # Initialise temperature control
-        if self.cfg.target_temp_c is not None:
+        # Initialise temperature control.
+        # auto_heat=False (used by the web GUI) always starts with heaters OFF;
+        # targets are then set explicitly by the operator. Experiments/CLI keep
+        # the default and apply config.yaml targets on connect.
+        if auto_heat and self.cfg.target_temp_c is not None:
             self.sensor.set_temperature_target(self.cfg.target_temp_c, self.cfg.max_power_pct, self.cfg.sensor_pin)
         else:
             self.sensor.clear_temperature_target()   # ensures heaters are off at startup
@@ -177,7 +181,12 @@ class BoardManager:
     """
     MAX_BOARDS = 5
 
-    def __init__(self, config_path: str, board_ids: set[str] | None = None):
+    def __init__(
+        self,
+        config_path: str,
+        board_ids: set[str] | None = None,
+        auto_heat: bool = True,
+    ):
         """
         Args:
             config_path: Path to config.yaml.
@@ -185,6 +194,8 @@ class BoardManager:
                          only boards whose board_id is in this set are connected —
                          boards with placeholder COM ports that are not in use are skipped.
                          Pass None to initialise all boards (legacy / CLI behaviour).
+            auto_heat:   If True (default), apply config.yaml target_temp_c on
+                         connect. If False, always connect with heaters OFF.
         """
         self.config_path = config_path
         self.cfg = self._load_config(config_path)
@@ -207,7 +218,8 @@ class BoardManager:
                 logging.info("BoardManager: skipping boards not in experiment: %s", skipped)
 
         self._boards: List[_BoardRuntime] = [
-            _BoardRuntime(bcfg, data_dir=self.cfg.data_dir) for bcfg in active
+            _BoardRuntime(bcfg, data_dir=self.cfg.data_dir, auto_heat=auto_heat)
+            for bcfg in active
         ]
 
         # Optional: lock if you later decide to share a single analyser/file across boards.
@@ -221,6 +233,10 @@ class BoardManager:
         data_dir = raw.get("data_dir", "./data")
         boards_raw = raw.get("PCBs", [])
         boards: List[BoardConfig] = []
+
+        # Env override lets tools (e.g. n9-web --sim) force simulation for all
+        # boards without editing config.yaml.
+        force_sim = os.environ.get("N9_SIM_BOARDS", "") == "1"
 
         for b in boards_raw:
             ss = b.get("sensor_settings", {})
@@ -239,6 +255,7 @@ class BoardManager:
                     target_temp_c=float(b["target_temp_c"]) if b.get("target_temp_c") is not None else None,
                     max_power_pct=float(b.get("max_power_%", 50.0)),
                     sensor_pin=int(b.get("sensor_pin", 5)),
+                    simulate=force_sim or bool(b.get("simulate", False)),
                 )
             )
 

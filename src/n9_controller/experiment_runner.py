@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 _STATE_SUBDIR = "state"
 
 
+class ExperimentAborted(Exception):
+    """Raised inside run() when an external abort_event is set between steps."""
+
+
 class ExperimentRunner:
     """
     Executes an experiment defined in experiment.yaml.
@@ -82,10 +86,15 @@ class ExperimentRunner:
             self._raw_cfg.get("data_dir", "data"), _STATE_SUBDIR
         )
 
-        # Build hardware abstraction layers
+        # Build hardware abstraction layers.
+        # N9_SIM_HARDWARE=1 (set by `n9-web --sim`) forces simulation for the
+        # robot and fluidic pumps regardless of config.yaml, so a sim web
+        # server can never move real hardware. Boards use N9_SIM_BOARDS.
+        force_sim = os.environ.get("N9_SIM_HARDWARE", "") == "1"
         robot_cfg = self._raw_cfg.get("robot", {})
+        robot_simulate = force_sim or bool(robot_cfg.get("simulate", True))
         self.robot = N9RobotController(
-            simulate=bool(robot_cfg.get("simulate", True)),
+            simulate=robot_simulate,
             safe_travel_z_mm=float(robot_cfg.get("safe_travel_z_mm", 80.0)),
             device_serial=robot_cfg.get("device_serial") or None,
             velocity=int(robot_cfg["velocity"]) if "velocity" in robot_cfg else None,
@@ -96,9 +105,9 @@ class ExperimentRunner:
         self.coord_map = CoordinateMap.from_config(self._raw_cfg)
 
         # Pump controller (peristaltic pumps + digital outputs for test cell)
-        robot_hw = None if robot_cfg.get("simulate", True) else self.robot
+        robot_hw = None if robot_simulate else self.robot
         self.pump_ctrl = PumpController(
-            simulate=bool(robot_cfg.get("simulate", True)),
+            simulate=robot_simulate,
             robot=robot_hw,
             pump_cfg=self._raw_cfg.get("peristaltic_pumps", {}),
             test_cell_cfg=self._raw_cfg.get("test_cell", {}),
@@ -109,8 +118,9 @@ class ExperimentRunner:
         self.fluidic_pump_ctrl = FluidicPumpCtrl(
             COM=str(self._fluidic_cfg.get("com_port", "COM1")),
             baud=int(self._fluidic_cfg.get("baud", 115200)),
-            sim=bool(self._fluidic_cfg.get("simulate", True)),
+            sim=force_sim or bool(self._fluidic_cfg.get("simulate", True)),
             timeout=float(self._fluidic_cfg.get("timeout", 60.0)),
+            invert_pumps=self._fluidic_cfg.get("invert_pumps"),
         )
 
         # Spectral board manager — only initialise boards used by this experiment's
@@ -164,8 +174,20 @@ class ExperimentRunner:
 
     # ── Main entry point ──────────────────────────────────────────────────────
 
-    def run(self) -> None:
-        """Execute all steps defined in experiment.yaml in order."""
+    def run(
+        self,
+        abort_event: "threading.Event | None" = None,
+        on_step: "Optional[callable]" = None,
+    ) -> None:
+        """Execute all steps defined in experiment.yaml in order.
+
+        Args:
+            abort_event: Optional external stop signal, checked between steps.
+                         When set, raises ExperimentAborted (cleanup still runs
+                         via the finally block; caller should call shutdown()).
+            on_step:     Optional callback (step_name, index, total) invoked
+                         before each step — used by the web UI for progress.
+        """
         logger.info(
             "Starting experiment '%s': %d steps",
             self.exp_cfg.experiment_id,
@@ -174,10 +196,16 @@ class ExperimentRunner:
 
         self.board_manager.enable_control_voltage()
         try:
-            for step_name in self.exp_cfg.steps:
+            for step_idx, step_name in enumerate(self.exp_cfg.steps):
+                if abort_event is not None and abort_event.is_set():
+                    raise ExperimentAborted(
+                        f"Abort requested before step '{step_name}'."
+                    )
                 method = self.STEP_MAP.get(step_name)
                 if method is None:
                     raise ValueError(f"No handler for experiment step '{step_name}'.")
+                if on_step is not None:
+                    on_step(step_name, step_idx, len(self.exp_cfg.steps))
                 logger.info("── Step: %s ──", step_name)
                 method(self)
                 self.state.save(self._state_dir)

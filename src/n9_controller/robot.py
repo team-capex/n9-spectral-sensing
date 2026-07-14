@@ -774,3 +774,7 @@ class N9RobotController:
         self.move_xy(x, y, gripper_angle_offset_rad=gripper_angle_offset_rad)
         self.move_z(z)
         self.close_gripper()
+        # Lift straight up BEFORE any XY travel — the next call is typically
+        # place_at(), which starts with a sideways move; without this raise
+        # the sample is dragged into the test-cell wall at grip depth.
+        self.raise_to_safe()

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>N9 Control</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">N9 Spectral Sensing</div>
+  <div id="mode-badge" class="badge">…</div>
+  <div id="device-dots" class="dots"></div>
+</header>
+
+<nav id="tabs">
+  <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="temperature">Temperature</button>
+  <button data-tab="spectral">Spectral</button>
+  <button data-tab="robot">Robot / Samples</button>
+  <button data-tab="pumps">Pumps</button>
+  <button data-tab="echem">Electrochemistry</button>
+  <button data-tab="experiment">Experiment</button>
+</nav>
+
+<main>
+  <!-- ── Dashboard ─────────────────────────────────────────────────────── -->
+  <section id="tab-dashboard" class="tab active">
+    <div class="row wrap" id="dash-summary"></div>
+    <h2>Platform map</h2>
+    <p class="note">Robot workspace to scale, seen from the operator side.
+    Positions come from config.yaml — if a station or holder sits wrong here,
+    its origin_xyz needs calibrating in config.yaml.
+    Click a holder slot to paint it with the selected state; use
+    <b>Add</b> / <b>Clear</b> below to edit whole holders. Edits update
+    holder_state.json (locked while an experiment runs).</p>
+    <div class="row">
+      <label>Paint state
+        <select id="holder-paint">
+          <option>FRESH</option><option>EMPTY</option>
+          <option>USED</option><option>CLEAN</option>
+        </select>
+      </label>
+      <label>Sample type <input id="holder-type" value="PC" style="width:5em"></label>
+    </div>
+    <div class="card" id="platform-map"></div>
+    <div class="row wrap" id="holder-controls"></div>
+    <div class="legend">
+      <span><i class="cell state-FRESH"></i> Fresh</span>
+      <span><i class="cell state-EMPTY"></i> Empty</span>
+      <span><i class="cell state-USED"></i> Used</span>
+      <span><i class="cell state-CLEAN"></i> Clean</span>
+      <span><i class="cell state-SAMPLE_LOADED"></i> Loaded</span>
+      <span><i class="cell state-MEASURED"></i> Measured</span>
+      <span><i class="cell state-EMPTY_DIRTY"></i> Dirty</span>
+    </div>
+    <h2>Sample trace</h2>
+    <p class="note">Audit trail of every sample movement and measurement
+    (full history in data/sample_trace.csv).</p>
+    <div class="scroll-x"><table id="dash-trace"></table></div>
+  </section>
+
+  <!-- ── Temperature ───────────────────────────────────────────────────── -->
+  <section id="tab-temperature" class="tab">
+    <div class="row spread">
+      <p class="note">Heaters always start <b>OFF</b> when the app connects —
+      heating only starts when you set a target here. Setpoints apply immediately.
+      ⚠ Closing this app does <b>not</b> stop firmware heating — use
+      <b>All heaters off</b>.</p>
+      <button id="temp-all-off" class="danger">All heaters off</button>
+    </div>
+    <div class="row wrap" id="temp-cards"></div>
+  </section>
+
+  <!-- ── Spectral ─────────────────────────────────────────────────────── -->
+  <section id="tab-spectral" class="tab">
+    <div class="row wrap">
+      <div class="card">
+        <h3>LED panel</h3>
+        <div class="row">
+          <button id="led-on" class="primary">LED panel ON</button>
+          <button id="led-off">LED panel OFF</button>
+        </div>
+        <p class="note">Applies each board's configured control voltage (0 V = off).</p>
+      </div>
+      <div class="card grow">
+        <h3>Boards</h3>
+        <table id="spec-boards-table"></table>
+        <p class="note">Disabling a board disconnects it (scans, temperature).
+        Re-enabling reconnects on next use and re-applies config.yaml heater targets.</p>
+      </div>
+    </div>
+    <div class="row">
+      <label>Board <select id="spec-board"></select></label>
+      <button id="spec-scan" class="primary">Scan now</button>
+      <span id="spec-scan-status" class="note"></span>
+    </div>
+    <div id="spec-plot" class="card plot-box"></div>
+    <h2>Latest readings</h2>
+    <div class="scroll-x"><table id="spec-table"></table></div>
+  </section>
+
+  <!-- ── Robot / Samples ──────────────────────────────────────────────── -->
+  <section id="tab-robot" class="tab">
+    <div class="row wrap">
+      <div class="card">
+        <h3>Arm</h3>
+        <div class="row">
+          <button id="rb-home">Home</button>
+          <button id="rb-safez">Raise to safe Z</button>
+          <button id="rb-grip-open">Open gripper</button>
+          <button id="rb-grip-close">Close gripper</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Raw move (confirm)</h3>
+        <div class="row">
+          <label>X <input id="rb-x" type="number" step="0.1" style="width:6em"></label>
+          <label>Y <input id="rb-y" type="number" step="0.1" style="width:6em"></label>
+          <label>Z <input id="rb-z" type="number" step="0.1" style="width:6em"></label>
+          <button id="rb-move" class="danger">Move</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Transfer sample (confirm)</h3>
+      <div class="row wrap">
+        <fieldset><legend>From</legend><div id="loc-from"></div></fieldset>
+        <fieldset><legend>To</legend><div id="loc-to"></div></fieldset>
+        <div class="col">
+          <button id="rb-transfer" class="danger">Transfer</button>
+          <button id="rb-pick" class="danger">Pick only (from)</button>
+          <button id="rb-place" class="danger">Place only (to)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Calibrate positions</h3>
+      <p class="note">Moves the arm over the selected holder/station's first slot
+      (col 0, row 0) at the configured origin, 20 mm above pick height. Jog until
+      the gripper is exactly over the physical slot (and down to pick height if
+      calibrating Z), then <b>Save</b> — the new origin is written to config.yaml.</p>
+      <div class="row wrap">
+        <label>Target <select id="cal-target"></select></label>
+        <button id="cal-start" class="danger">Start (robot moves)</button>
+        <span id="cal-offset" class="note"></span>
+      </div>
+      <div class="row wrap" id="cal-jog" style="display:none">
+        <label>Step (mm)
+          <select id="cal-step">
+            <option>0.1</option><option>0.5</option><option selected>1</option><option>5</option>
+          </select>
+        </label>
+        <span class="jogpad">
+          <button data-jog="x-">X−</button><button data-jog="x+">X+</button>
+          <button data-jog="y-">Y−</button><button data-jog="y+">Y+</button>
+          <button data-jog="z-">Z↓</button><button data-jog="z+">Z↑</button>
+        </span>
+        <button id="cal-save" class="primary">Save origin</button>
+        <button id="cal-cancel">Cancel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Test cell</h3>
+      <div class="row wrap">
+        <button id="tc-insert" class="danger">Insert sample (from ↑)</button>
+        <button id="tc-retrieve" class="danger">Retrieve sample (to ↑)</button>
+        <button id="tc-piston-on" class="danger">Engage piston</button>
+        <button id="tc-piston-off" class="danger">Release piston</button>
+        <label>Fill mL <input id="tc-fill-ml" type="number" value="5" min="0.1" step="0.5" style="width:5em"></label>
+        <button id="tc-fill" class="danger">Fill</button>
+        <label>Drain mL <input id="tc-drain-ml" type="number" value="5" min="0.1" step="0.5" style="width:5em"></label>
+        <button id="tc-drain" class="danger">Drain</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Pumps ────────────────────────────────────────────────────────── -->
+  <section id="tab-pumps" class="tab">
+    <div class="row spread">
+      <span id="pumps-env" class="note"></span>
+      <div class="row">
+        <label>Prime mL <input id="prime-ml" type="number" value="2" min="0.1" step="0.5" style="width:4.5em" title="volume per peristaltic pump"></label>
+        <button id="pumps-prime" class="primary">Prime all pumps</button>
+        <button id="pumps-stop" class="danger big">⛔ EMERGENCY STOP (steppers)</button>
+      </div>
+    </div>
+    <div class="row wrap">
+      <div class="card grow">
+        <h3>Peristaltic pumps</h3>
+        <table id="pumps-peri"></table>
+      </div>
+      <div class="card grow">
+        <h3>Stepper pumps (fluidic PCB)</h3>
+        <table id="pumps-step"></table>
+        <p class="note">Negative volume = reverse / withdraw.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Electrochemistry ─────────────────────────────────────────────── -->
+  <section id="tab-echem" class="tab">
+    <div class="row wrap">
+      <div class="card">
+        <h3>Run technique</h3>
+        <label>Technique <select id="ec-technique"></select></label>
+        <label>Sample ID <input id="ec-sample" placeholder="(optional — stored with result)" style="width:14em"></label>
+        <div id="ec-params" class="params"></div>
+        <div class="row">
+          <button id="ec-run" class="primary">Run</button>
+          <button id="ec-abort" class="danger">Abort</button>
+          <span id="ec-status" class="note"></span>
+        </div>
+      </div>
+      <div class="card grow">
+        <h3>Result</h3>
+        <div id="ec-plot" class="plot-box"></div>
+        <div id="ec-plot2" class="plot-box"></div>
+      </div>
+    </div>
+    <h2>Sequence builder</h2>
+    <p class="note">Build a measurement sequence from techniques, waits, and loops.
+    Results are saved under data/echem/&lt;data folder&gt;/ with one CSV per measurement.</p>
+    <div id="echem-builder"></div>
+    <h2>Past runs</h2>
+    <div class="scroll-x"><table id="ec-runs"></table></div>
+  </section>
+
+  <!-- ── Experiment ───────────────────────────────────────────────────── -->
+  <section id="tab-experiment" class="tab">
+    <div class="row wrap">
+      <div class="card grow">
+        <h3>Start experiment</h3>
+        <label>File <select id="ex-file"></select></label>
+        <div id="ex-file-info" class="note"></div>
+        <div class="row">
+          <label><input type="checkbox" id="ex-resume"> Resume previous state</label>
+          <button id="ex-start" class="danger">Start</button>
+        </div>
+      </div>
+      <div class="card grow">
+        <h3>Run status</h3>
+        <div id="ex-status"></div>
+        <div class="progress"><div id="ex-progress-bar"></div></div>
+        <div class="row">
+          <button id="ex-abort-soft" class="danger">Abort (after current step)</button>
+          <button id="ex-abort-hard" class="danger">Abort (hard)</button>
+        </div>
+        <p class="note">Soft abort finishes the current step first. Hard abort cannot
+        interrupt a blocking serial operation — prefer soft.</p>
+      </div>
+    </div>
+    <h2>Procedure builder</h2>
+    <p class="note">Build a full procedure from sample movements, pumping,
+    scanning, electrochemistry, waits, and loops. Runs directly on the
+    hardware — manual control is locked while it runs.</p>
+    <div id="procedure-builder"></div>
+    <h2>Log</h2>
+    <pre id="ex-log" class="log"></pre>
+  </section>
+</main>
+
+<dialog id="confirm-dialog">
+  <h3>Confirm action</h3>
+  <p id="confirm-text"></p>
+  <div class="row right">
+    <button id="confirm-cancel">Cancel</button>
+    <button id="confirm-ok" class="danger">Confirm</button>
+  </div>
+</dialog>
+
+<div id="toasts"></div>
+
+<script src="plot.js"></script>
+<script src="builder.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

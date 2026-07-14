@@ -14,9 +14,13 @@ def skip_if_sim(default_return = None):
     return decorator
 
 class PumpController:
-    def __init__(self, COM: str, baud: int = 115200, sim: bool = False, timeout: float = 60.0):
+    def __init__(self, COM: str, baud: int = 115200, sim: bool = False, timeout: float = 60.0,
+                 invert_pumps: "list[int] | None" = None):
         self.sim = sim
         self.timeout = timeout
+        # Pumps wired with reversed rotation: their volumes are sign-flipped
+        # here so positive ml always means "dispense" for every pump.
+        self.invert_pumps = set(invert_pumps or [])
 
         if self.sim:
             logging.info("Simulated connection to pump controller established.")
@@ -107,7 +111,10 @@ class PumpController:
     def stepper_pump(self, pump_no: int, ml: float, flow_rate: float = 0.05, check: bool = True) -> None:
         if pump_no < 0 or pump_no > 4:
             raise ValueError("Incorrect stepper pump index; must be 1 -> 4")
-        
+
+        if pump_no in self.invert_pumps:
+            ml = -ml
+
         self.ser.write(f"singleStepperPump({pump_no},{ml:.3f},{flow_rate:.3f})".encode())
         if check:
             self.check_response()
@@ -116,8 +123,12 @@ class PumpController:
     def multi_stepper_pump(self, ml: list[float], flow_rate: float = 0.05, check: bool = True) -> None:
         if len(ml) != 4:
             raise ValueError("Exactly 4 volumes are required")
-        
-        args = ",".join(f"{float(v):.3f}" for v in ml)
+
+        ml = [
+            -float(v) if (i + 1) in self.invert_pumps else float(v)
+            for i, v in enumerate(ml)
+        ]
+        args = ",".join(f"{v:.3f}" for v in ml)
         self.ser.write(f"multiStepperPump({args},{flow_rate:.3f})".encode())
 
         if check:

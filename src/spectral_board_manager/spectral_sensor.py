@@ -111,8 +111,11 @@ class SpectralSensor:
         if self.ser.isOpen():
             self.ser.close()
 
-    @skip_if_sim(default_return = "F1=0,F2=0,F3=0,F4=0,F5=0,F6=0,F7=0,F8=0,CLR=1,NIR=0")
     def read_sensor(self, no: int) -> str:
+        if self.sim:
+            # Match the real firmware format (parser requires the SENSOR field)
+            return (f"F1=10,F2=20,F3=30,F4=40,F5=50,F6=45,F7=35,F8=25,"
+                    f"CLR=200,NIR=5,SENSOR={no}")
         self.ser.write(f"readSensor({no})".encode())
         return self.extract_readings()
     

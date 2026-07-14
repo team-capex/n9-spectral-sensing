@@ -1,0 +1,39 @@
+# sim-webapp-smoketest-20260713.yaml
+# Short simulation-only experiment used to verify the n9-web GUI:
+# home → load samples → brief colour scan → return samples → report.
+# Safe to run with --sim (no hardware). ~30 s total.
+
+experiment_id: "sim-webapp-smoketest-20260713"
+description: >
+  Web GUI smoke test: 4 PC samples to sensing-station-1, ~10 s of continuous
+  scanning, then return to holder. Simulation only.
+
+sensing_stations:
+  - sensing-station-1
+
+sample_holders:
+  - holder-1
+
+holder_state_path: "holder_state.json"
+
+samples:
+  - sample_type: "PC"
+    count: 4
+    source: "holder"
+    destination: "pcb"
+
+scanning:
+  interval_minutes: 0
+  total_duration_hours: 0.003   # ≈ 11 s
+  temperature_control: false
+
+steps:
+  - home_robot
+  - load_from_sample_holders_to_pcb
+  - start_colour_scanning
+  - wait_for_colour_scanning
+  - return_all_to_holder
+  - report_cleaning_needed
+
+output:
+  cleaning_report_path: "data/cleaning_report.txt"

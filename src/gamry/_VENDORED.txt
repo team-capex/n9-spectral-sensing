@@ -1,0 +1,27 @@
+Vendored package: gamry v0.0.2
+Copied: 2026-07-13
+Source: C:\Users\Robot-C9\anaconda3\Lib\site-packages\gamry-0.0.2-py3.9.egg\gamry\
+        (local egg install; original authorship per EGG-INFO of that install)
+
+Pure-Python wrapper around GamryCOM (via comtypes) exposing recipe classes
+EIS, CV, CP, CA, OCP with .run() / .get_data(). Requires the Gamry Framework
+to be installed on the machine and the potentiostat connected via USB.
+
+Vendored unmodified so `import gamry.recipe` resolves from this repo's
+editable install without depending on the anaconda environment.
+
+MODIFIED 2026-07-14 (recipe.py, marked "VENDORED ADDITION (n9)"):
+- Recipe base: optional ie_range_a kwarg — fixed current range from a max
+  expected current in A (SetIERangeMode(False) + SetIERange(TestIERange(a))).
+  Unset/0 keeps the original autorange behaviour. Applied in EIS/CV/CP/CA.
+- EIS: optional VchRange kwarg (None/0 = previous default behaviour).
+- Recipe base: set_vch_range(volts) — used by CV/CP/CA/EIS. The Vch API is
+  INDEX-based (typelib: TestVchRange(volts)->index, SetVchRange(index)->
+  index_set; out-of-range indices clamp to the top range). Ref600 verified
+  2026-07-14: indices 0..3 = 30 mV / 300 mV / 3 V / 12 V. volts<=0/None =
+  autorange (SetVchRangeMode(True)); explicit volts = fixed range
+  (SetVchRangeMode(False) + SetVchRange(TestVchRange(volts))). The ORIGINAL
+  code passed volts (10.0) where an index was expected — silently clamped to
+  the 12 V range, i.e. the configured value never had any effect.
+- CV/CP/CA VchRange constructor defaults changed 10.0 -> None (autorange),
+  matching the legacy EFFECTIVE behaviour (autorange mode was always on).

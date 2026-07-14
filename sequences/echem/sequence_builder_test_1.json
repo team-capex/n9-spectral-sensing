@@ -1,0 +1,49 @@
+{
+  "name": "sequence_builder_test_1",
+  "data_dir": null,
+  "steps": [
+    {
+      "action": "echem:OCP",
+      "params": {
+        "tinit": 30,
+        "samplerate": 0.1
+      }
+    },
+    {
+      "action": "echem:EIS",
+      "params": {
+        "init_freq": 100000,
+        "final_freq": 1,
+        "pts_per_dec": 10,
+        "dc": 1.6,
+        "ac": 0.01
+      }
+    },
+    {
+      "action": "echem:CV",
+      "params": {
+        "init_voltage": 0,
+        "final_voltage": 0,
+        "apex1": 0.5,
+        "apex2": -0.5,
+        "scanrate1": 0.1,
+        "stepsize": 0.01,
+        "cycles": 2,
+        "VchRange": 10
+      }
+    },
+    {
+      "action": "echem:CP",
+      "params": {
+        "init_voltage": 0.001,
+        "tinit": 30,
+        "vstep1": 0.002,
+        "tstep1": 30,
+        "vstep2": 0.005,
+        "tstep2": 30,
+        "sample": 0.01,
+        "VchRange": 10
+      }
+    }
+  ]
+}

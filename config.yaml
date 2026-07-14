@@ -2,8 +2,15 @@ data_dir: "data"
 
 # ── Spectral sensing boards (serial connection to ESP32 PCBs) ─────────────────
 PCBs:
+  # COM ports remapped 2026-07-14 after USB hub install (CH340 adapters have
+  # no serial numbers, so Windows renumbers them when the USB topology
+  # changes). Identified by serial probing: board-1 confirmed by its NTC
+  # probes (~27 C; other boards read open-circuit). Boards 2/3/4 assigned by
+  # hub port order (board-1 was on hub port 1) — if station labels look
+  # swapped, exchange the ports of board-2/board-3 here.
   - board_id: "board-1"
-    com_port: "COM12"
+    enabled: true                # false = board not connected/in use; skipped by the web GUI
+    com_port: "COM5"
     sensors_in_use: 16           # 1..16
     sensor_settings:
       gain: 64                    # 1,2,4,8
@@ -16,7 +23,8 @@ PCBs:
     sensor_pin: 5                 # NTC sensor pin input (1, 2, 4 or 5)
 
   - board_id: "board-2"
-    com_port: "COM6"            # placeholder — update to actual port
+    enabled: true
+    com_port: "COM7"            # hub port 2 (see remap note above)
     sensors_in_use: 16
     sensor_settings:
       gain: 64
@@ -29,7 +37,8 @@ PCBs:
     sensor_pin: 5
 
   - board_id: "board-3"
-    com_port: "COM11"     
+    enabled: true
+    com_port: "COM8"            # hub port 3 (see remap note above)
     sensors_in_use: 16
     sensor_settings:
       gain: 64
@@ -42,7 +51,8 @@ PCBs:
     sensor_pin: 5
 
   - board_id: "board-4"
-    com_port: "COM9"
+    enabled: false               # not installed at a station
+    com_port: "COM14"           # spectral board on hub port 4 (probes absent)
     sensors_in_use: 16
     sensor_settings:
       gain: 64
@@ -55,6 +65,7 @@ PCBs:
     sensor_pin: 5
 
   - board_id: "board-5"
+    enabled: false               # not installed
     com_port: "COM15"
     sensors_in_use: 16
     sensor_settings:
@@ -130,7 +141,7 @@ sample_holders:
   - holder_id: "holder-1"
     origin_xyz: [183.25, 67.62, 52.0]
     col_spacing_mm: 11.5         # spacing between the 5 columns
-    row_spacing_mm: 5.75         # spacing between the 18 rows
+    row_spacing_mm: -5.75         # spacing between the 18 rows
     n_cols: 5
     n_rows: 18
     pick_z_mm: 40.0               # Z (mm) to descend to for pick/place
@@ -138,7 +149,7 @@ sample_holders:
   - holder_id: "holder-2"
     origin_xyz: [108.25, 67.62, 52.0]  # placeholder — calibrate before use
     col_spacing_mm: 11.5
-    row_spacing_mm: 5.75
+    row_spacing_mm: -5.75
     n_cols: 5
     n_rows: 18
     pick_z_mm: 40.0
@@ -146,7 +157,7 @@ sample_holders:
   - holder_id: "holder-3"
     origin_xyz: [183.25, -82.38, 52.0]  # placeholder
     col_spacing_mm: 11.5
-    row_spacing_mm: 5.75
+    row_spacing_mm: -5.75
     n_cols: 5
     n_rows: 18
     pick_z_mm: 40.0
@@ -165,28 +176,25 @@ legacy_sample_racks:
     pick_z_mm: 44.0                       # height for pick/place (matches legacy Z)
 
 # ── Peristaltic pumps ─────────────────────────────────────────────────────────
-# Indices and calibration from legacy C9 system (params.py).
+# Only the 4 pumps in use. Calibration stays with the physical pump (index).
 # Volume model: volume_ml = flow_rate_ml_per_s * time_s + offset_ml
 # → run time = (volume_ml - offset_ml) / flow_rate_ml_per_s
-# 17, 18, 20 dead!
+# Renamed 2026-07-13: idx 12 KOH (was H2O_ECELL), idx 14 H2O_ECELL (was
+# H2O_VIAL), idx 16 HCl_ECELL (was Air).
 peristaltic_pumps:
   Drain:       { index: 13, flow_rate_ml_per_s: 2.2326,  offset_ml:  0.0    }
-  KOH:         { index: 17, flow_rate_ml_per_s: 0.3363,  offset_ml:  0.0626 }
-  H2O_ECELL:   { index: 12, flow_rate_ml_per_s: 0.7518,  offset_ml: -0.2341 }
-  H2O_VIAL:    { index: 14, flow_rate_ml_per_s: 0.6104,  offset_ml:  0.0638 }
-  Air:         { index: 16, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
-  HCl_ECELL:   { index: 18, flow_rate_ml_per_s: 0.3555,  offset_ml: -0.0795 }
-  H2O_suction: { index: 15, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
-  HCl:         { index: 20, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
-  NaOH:        { index: 19, flow_rate_ml_per_s: 0.4474,  offset_ml:  0.0702 }
+  KOH:         { index: 12, flow_rate_ml_per_s: 0.7518,  offset_ml: -0.2341 }
+  H2O_ECELL:   { index: 14, flow_rate_ml_per_s: 0.6104,  offset_ml:  0.0638 }
+  HCl_ECELL:   { index: 16, flow_rate_ml_per_s: 0.6,     offset_ml:  0.1    }
 
 # ── Fluidic pump controller (ESP32 stepper pump PCB) ─────────────────────────
 # Controls 4 stepper pumps for dye mixing and dispensing via robot end effector.
 fluidic_pump_controller:
-  com_port: "COM13"              # placeholder — update to actual port
+  com_port: "COM11"              # remapped 2026-07-14 (USB hub); confirmed by getHumidity() probe
   simulate: false
   baud: 115200
   timeout: 60.0
+  invert_pumps: [3]              # stepper pumps wired with reversed rotation (dye 1); volumes are sign-flipped in software
   pipette_offset_mm: 60.0        # gripper-to-pipette-tip distance along last link, XY plane
   pipette_x_correction_mm: -0.5  # fixed X position correction for PCB pipette targets (mm)
   pipette_y_correction_mm: 2.5  # fixed Y position correction for PCB pipette targets (mm)
@@ -211,7 +219,22 @@ test_cell:
   # Digital output index (from legacy params.py ECELL_INDICES)
   piston_output_index: 2                       # hydraulic piston (on = engage/clamp)
   # Fill/drain pumps (from peristaltic_pumps section above)
-  fill_pump: "H2O_VIAL"                       # pump used to fill the test cell
+  fill_pump: "H2O_ECELL"                      # pump used to fill the test cell (idx 14, was named H2O_VIAL)
   drain_pump: "Drain"                          # pump used to drain the test cell
   fill_volume_ml: 0                            # ECELL_VOLUME from legacy
   gripper_angle: 90                            # degrees; extra gripper rotation for test cell XY moves only
+
+# ── Web GUI (n9-web) ──────────────────────────────────────────────────────────
+web:
+  host: 127.0.0.1
+  port: 8000
+  # Allowed envelope for raw XYZ moves from the GUI (mm). Grid-based moves are
+  # validated against the layouts above instead. Calibrate to the real workspace.
+  workspace_limits:
+    x: [-260.0, 360.0]
+    y: [-110.0, 310.0]
+    z: [20.0, 210.0]
+  # Directory scanned for experiment YAML files offered in the GUI
+  experiments_dir: "experiment-database"
+  # Safety caps for manual pump operations from the GUI (mL)
+  max_manual_volume_ml: 25.0
